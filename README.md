@@ -20,7 +20,7 @@ lives in the device's local storage and can be exported to a JSON backup.
 | `src/lib/engine.ts` | The scheduling engine (lesson counting, windows, clash avoidance) |
 | `src/lib/demo.ts` | One-tap demo timetable, ported from the old SQL seed |
 | `android/` | Capacitor Android project (committed, regenerated assets on sync) |
-| `.github/workflows/android-build.yml` | CI that builds and uploads the APK |
+| `ci/github-actions/android-build.yml` | CI that builds and uploads the APK (see below) |
 
 ## Requirements
 
@@ -61,7 +61,22 @@ open it (you'll need "install unknown apps" enabled).
 
 ## Build the APK with GitHub Actions
 
-`.github/workflows/android-build.yml` runs on every push, on pull requests, and on
+### One-time install of the workflow
+
+GitHub blocks apps without the `workflows` permission from pushing files into
+`.github/workflows/`, so the ready-made workflow ships at
+`ci/github-actions/android-build.yml`. Install it from your own account once:
+
+```bash
+./scripts/install-workflow.sh   # copies it into .github/workflows/ and commits
+git push
+```
+
+(Or just copy that file into `.github/workflows/` through the GitHub web editor.)
+
+### What it does
+
+`android-build.yml` runs on every push, on pull requests, and on
 manual dispatch. It lints, type-checks, exports the web bundle, syncs Capacitor and
 runs `./gradlew assembleDebug`.
 
