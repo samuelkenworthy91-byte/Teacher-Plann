@@ -20,7 +20,7 @@ lives in the device's local storage and can be exported to a JSON backup.
 | `src/lib/engine.ts` | The scheduling engine (lesson counting, windows, clash avoidance) |
 | `src/lib/demo.ts` | One-tap demo timetable, ported from the old SQL seed |
 | `android/` | Capacitor Android project (committed, regenerated assets on sync) |
-| `ci/github-actions/android-build.yml` | CI that builds and uploads the APK (see below) |
+| `.github/workflows/android-build.yml` | CI that builds and uploads the APK |
 
 ## Requirements
 
@@ -61,21 +61,6 @@ open it (you'll need "install unknown apps" enabled).
 
 ## Build the APK with GitHub Actions
 
-### One-time install of the workflow
-
-GitHub blocks apps without the `workflows` permission from pushing files into
-`.github/workflows/`, so the ready-made workflow ships at
-`ci/github-actions/android-build.yml`. Install it from your own account once:
-
-```bash
-./scripts/install-workflow.sh   # copies it into .github/workflows/ and commits
-git push
-```
-
-(Or just copy that file into `.github/workflows/` through the GitHub web editor.)
-
-### What it does
-
 `android-build.yml` runs on every push, on pull requests, and on
 manual dispatch. It lints, type-checks, exports the web bundle, syncs Capacitor and
 runs `./gradlew assembleDebug`.
@@ -103,6 +88,18 @@ is installable over the last one.
 | App id (`app.markflow.planner`) | `capacitor.config.ts` + `android/app/build.gradle` |
 | App name | `capacitor.config.ts`, `android/app/src/main/res/values/strings.xml` |
 | Icon / splash sources | `assets/` (generated resources live in `android/app/src/main/res/`) |
+
+## Screen fit on phones
+
+Android 15 draws apps edge-to-edge, which would tuck the top bar under the status
+bar and camera cut-out. Two things keep the UI clear of it:
+
+- `capacitor.config.ts` → `android.adjustMarginsForEdgeToEdge: "force"` plus
+  `StatusBar.overlaysWebView: false` (also applied at runtime in
+  `src/components/native-bridge.tsx`).
+- `safe-top` / `safe-bottom` / `safe-x` / `safe-inset` CSS helpers in
+  `src/app/globals.css`, applied to the top bar, sidebar, drawer, page content and
+  full-screen overlays, so notches and gesture bars never cover controls.
 
 ## Your data
 
