@@ -1,0 +1,293 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #f6f3ec;
+  --color-card: #fffdf8;
+  --color-ink: #211d17;
+  --color-ink-soft: #6f6658;
+  --color-ink-faint: #9b9184;
+  --color-line: rgba(33, 29, 23, 0.1);
+  --color-line-strong: rgba(33, 29, 23, 0.18);
+  --color-pen: #d9481f;
+  --color-pen-deep: #b23a17;
+  --color-pen-soft: #fbe9e2;
+  --color-good: #2e7d5b;
+  --color-good-soft: #e3f1ea;
+  --color-warn: #b97f14;
+  --color-warn-soft: #f8eed7;
+  --color-bad: #c43b2a;
+  --color-bad-soft: #fbe7e4;
+  --color-dark: #1c1812;
+  --color-dark-2: #2a251c;
+  --color-cream: #f4efe4;
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+
+  --shadow-soft: 0 1px 2px rgba(33, 29, 23, 0.05), 0 14px 34px -16px rgba(33, 29, 23, 0.18);
+  --shadow-lift: 0 2px 4px rgba(33, 29, 23, 0.06), 0 24px 48px -20px rgba(33, 29, 23, 0.28);
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.22, 0.8, 0.35, 1) both;
+  --animate-pop: pop 0.28s cubic-bezier(0.22, 0.8, 0.35, 1) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  /* Matches the strip behind the status bar when the WebView is inset. */
+  background-color: var(--color-paper);
+}
+
+body {
+  background-color: var(--color-paper);
+  background-image: radial-gradient(rgba(33, 29, 23, 0.045) 1px, transparent 1px);
+  background-size: 22px 22px;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-pen);
+  color: #fff;
+}
+
+/* ---------- device safe areas ----------
+   On phones the status bar, camera cut-out and gesture bar overlap the
+   WebView. These helpers keep chrome (top bar, sidebar, drawer, modals)
+   inside the usable area. They collapse to 0 on desktop and whenever the
+   native layer already insets the WebView. */
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.safe-x {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.safe-inset {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+/* Sticky bars need the inset *inside* the sticky element, not above it. */
+.safe-sticky-top {
+  top: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ---------- primitives ---------- */
+
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 1.1rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.card-hover {
+  transition: transform 0.25s cubic-bezier(0.22, 0.8, 0.35, 1), box-shadow 0.25s;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0.62rem 1.05rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.15s, background 0.2s, color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-ink {
+  background: var(--color-ink);
+  color: var(--color-cream);
+}
+.btn-ink:hover:not(:disabled) {
+  background: #39332a;
+}
+
+.btn-pen {
+  background: var(--color-pen);
+  color: #fff;
+  box-shadow: 0 8px 20px -10px rgba(217, 72, 31, 0.7);
+}
+.btn-pen:hover:not(:disabled) {
+  background: var(--color-pen-deep);
+}
+
+.btn-ghost {
+  border-color: var(--color-line-strong);
+  color: var(--color-ink);
+  background: transparent;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(33, 29, 23, 0.06);
+}
+
+.btn-quiet {
+  color: var(--color-ink-soft);
+  padding: 0.62rem 0.8rem;
+}
+.btn-quiet:hover:not(:disabled) {
+  color: var(--color-ink);
+  background: rgba(33, 29, 23, 0.06);
+}
+
+.btn-danger {
+  background: var(--color-bad);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.input,
+.select {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-line-strong);
+  background: #fff;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input:focus,
+.select:focus {
+  border-color: var(--color-pen);
+  box-shadow: 0 0 0 3px rgba(217, 72, 31, 0.15);
+}
+.input::placeholder {
+  color: var(--color-ink-faint);
+}
+
+.label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+  margin-bottom: 0.35rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.28rem 0.65rem;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  color: var(--color-ink-soft);
+}
+
+.divider {
+  height: 1px;
+  background: var(--color-line);
+  border: 0;
+}
+
+/* squiggle underline for display headings */
+.squiggle {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='8' viewBox='0 0 60 8'%3E%3Cpath d='M1 5.5 C 8 1.5, 14 7, 21 4.5 S 35 1.5, 42 4.5 S 55 6.5, 59 3' fill='none' stroke='%23d9481f' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 0.32em;
+  padding-bottom: 0.22em;
+}
+
+/* skeleton shimmer */
+.skeleton {
+  border-radius: 0.8rem;
+  background: linear-gradient(90deg, rgba(33, 29, 23, 0.06) 25%, rgba(33, 29, 23, 0.11) 50%, rgba(33, 29, 23, 0.06) 75%);
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+/* thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(33, 29, 23, 0.25) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(33, 29, 23, 0.22);
+  border-radius: 999px;
+}
+
+/* staggered entrance helper */
+.rise {
+  animation: var(--animate-fade-up);
+}
+.pop {
+  animation: var(--animate-pop);
+}
+
+/* number input: hide spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
