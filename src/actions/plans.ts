@@ -2,10 +2,11 @@
 
 import { mutate, getDb, nextId } from "@/lib/store";
 import { todayStr, clampInt } from "@/lib/dates";
-import { dailyRateFor, generateSchedule } from "@/lib/engine";
+import { dailyRateFor } from "@/lib/engine";
 import {
   computeDeferCollect,
   computeDeferHandback,
+  generateArenaSchedule,
   lessonToday,
   suggestAdhocHandback,
 } from "@/lib/arena-offline";
@@ -51,7 +52,7 @@ async function restaggerDiary(): Promise<number> {
   if (db.classes.length === 0 || db.slots.length === 0) return 0;
 
   const today = todayStr();
-  const suggestions = generateSchedule({
+  const suggestions = generateArenaSchedule({
     classes: db.classes,
     slots: db.slots,
     plans: db.plans,
