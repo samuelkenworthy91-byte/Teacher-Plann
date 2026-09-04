@@ -33,7 +33,9 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # package.json pins native plugin versions. npm install also refreshes
+        # the working lockfile when a newly-added Capacitor plugin lands.
+        run: npm install --no-audit --no-fund
 
       - name: Lint
         run: npm run lint
