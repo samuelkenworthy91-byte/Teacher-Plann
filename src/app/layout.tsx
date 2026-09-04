@@ -6,6 +6,7 @@ import "@fontsource-variable/fraunces";
 import "@fontsource-variable/fraunces/opsz-italic.css";
 import "./globals.css";
 import { NativeBridge } from "@/components/native-bridge";
+import { NotificationBridge } from "@/components/notification-bridge";
 
 export const metadata: Metadata = {
   title: {
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body className="min-h-screen antialiased">
         <NativeBridge />
+        <NotificationBridge />
         {children}
       </body>
     </html>
