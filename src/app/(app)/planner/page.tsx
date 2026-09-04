@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { CalendarRange, ShieldCheck, TriangleAlert } from "lucide-react";
 import { findClashes, weeklyLoad } from "@/lib/engine";
+import { suggestAdhocHandback } from "@/lib/arena-offline";
 import { pretty, prettyShort, startOfWeek } from "@/lib/dates";
 import { EmptyState } from "@/components/ui";
 import { PlannerBoard, type PlanVM } from "@/components/planner-board";
+import { AdhocCollect } from "@/components/arena-widgets";
 import { useBundle } from "@/lib/store";
 
 export default function PlannerPage() {
@@ -19,15 +21,11 @@ export default function PlannerPage() {
         <EmptyState
           icon={CalendarRange}
           title="The planner needs two ingredients"
-          body="Your classes (with sizes) and your timetable. Once it has both, it will schedule every formative so piles never overlap."
+          body="Your classes (with sizes) and your timetable. Once it has both, it will schedule every formative so piles stay staggered."
           action={
             <div className="flex gap-2">
-              <Link href="/classes" className="btn btn-ghost">
-                Classes
-              </Link>
-              <Link href="/timetable" className="btn btn-pen">
-                Timetable
-              </Link>
+              <Link href="/classes" className="btn btn-ghost">Classes</Link>
+              <Link href="/timetable" className="btn btn-pen">Timetable</Link>
             </div>
           }
         />
@@ -71,43 +69,42 @@ export default function PlannerPage() {
 
   return (
     <div className="space-y-6">
-      <header className="rise">
-        <p className="text-[0.72rem] font-bold uppercase tracking-[0.16em] text-pen">The engine</p>
-        <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-ink">
-          Smart planner
-        </h1>
-        <p className="mt-1 max-w-2xl text-[0.88rem] leading-relaxed text-ink-soft">
-          Every class gets a formative every{" "}
-          <strong className="text-ink">
-            {settings.minLessons}–{settings.maxLessons} lessons
-          </strong>
-          , never more than <strong className="text-ink">{settings.maxGapDays} days</strong> between
-          hand-backs, and windows are staggered so{" "}
-          <strong className="text-ink">only one pile</strong> is ever on your desk.
-        </p>
+      <header className="rise flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[0.72rem] font-bold uppercase tracking-[0.16em] text-pen">The engine</p>
+          <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-ink">Smart planner</h1>
+          <p className="mt-1 max-w-2xl text-[0.88rem] leading-relaxed text-ink-soft">
+            Every class gets a formative every <strong className="text-ink">{settings.minLessons}–{settings.maxLessons} lessons</strong>, never more than <strong className="text-ink">{settings.maxGapDays} days</strong> between hand-backs. Unexpected piles become fixed anchors and the flexible diary moves around them.
+          </p>
+        </div>
+        <AdhocCollect
+          classes={classes.map((c) => ({
+            id: c.id,
+            name: c.name,
+            color: c.color,
+            studentCount: c.studentCount,
+            suggestedHandback: suggestAdhocHandback({ classId: c.id, slots, settings, today }).date,
+          }))}
+          today={today}
+        />
       </header>
 
-      {/* Clash banner */}
       {clashes.length === 0 ? (
         <div className="rise flex items-center gap-3 rounded-2xl border border-good/25 bg-good-soft px-5 py-4" style={{ animationDelay: "40ms" }}>
           <ShieldCheck size={20} className="shrink-0 text-good" />
-          <p className="text-[0.85rem] font-medium text-good">
-            No clashes in the diary — you'll never be marking two classes at once.
-          </p>
+          <p className="text-[0.85rem] font-medium text-good">No clashes in the diary — one pile at a time.</p>
         </div>
       ) : (
         <div className="rise rounded-2xl border border-warn/30 bg-warn-soft px-5 py-4" style={{ animationDelay: "40ms" }}>
           <p className="flex items-center gap-2 text-[0.85rem] font-bold text-warn">
-            <TriangleAlert size={17} /> {clashes.length} overlapping window
-            {clashes.length === 1 ? "" : "s"}
+            <TriangleAlert size={17} /> Expected crossover · {clashes.length} overlapping window{clashes.length === 1 ? "" : "s"}
           </p>
           <p className="mt-1 text-[0.78rem] text-warn">
-            Two piles at once — edit dates below, or regenerate to re-stagger the diary.
+            MarkFlow keeps piles separate where it can. A crossover can remain when a locked or unexpected pile makes overlap unavoidable; you can edit dates below if you want to override it.
           </p>
         </div>
       )}
 
-      {/* Load meter */}
       <section className="card rise p-5" style={{ animationDelay: "80ms" }}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-display text-lg font-semibold text-ink">Workload by week</h2>
@@ -132,7 +129,6 @@ export default function PlannerPage() {
         </div>
       </section>
 
-      {/* The diary */}
       <PlannerBoard plans={vms} today={today} />
     </div>
   );
