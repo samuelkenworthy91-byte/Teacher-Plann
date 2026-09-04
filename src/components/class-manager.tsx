@@ -24,13 +24,12 @@ const YEARS = ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11", "Year 12", "Y
 type Draft = {
   id?: number;
   name: string;
-  subject: string;
   yearGroup: string;
   studentCount: string;
   color: string;
 };
 
-const emptyDraft: Draft = { name: "", subject: "", yearGroup: "Year 9", studentCount: "30", color: COLORS[0] };
+const emptyDraft: Draft = { name: "", yearGroup: "Year 9", studentCount: "30", color: COLORS[0] };
 
 type Op =
   | { kind: "add"; item: ClassVM }
@@ -61,7 +60,6 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
     const fd = new FormData();
     if (draft.id) fd.set("id", String(draft.id));
     fd.set("name", draft.name.trim());
-    fd.set("subject", draft.subject.trim());
     fd.set("yearGroup", draft.yearGroup);
     fd.set("studentCount", draft.studentCount);
     fd.set("color", draft.color);
@@ -69,7 +67,7 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
     const vm: ClassVM = {
       id: draft.id ?? -Date.now(),
       name: draft.name.trim(),
-      subject: draft.subject.trim(),
+      subject: "English",
       yearGroup: draft.yearGroup,
       studentCount: parseInt(draft.studentCount, 10) || 30,
       color: draft.color,
@@ -112,7 +110,7 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
         <EmptyState
           icon={Users}
           title="No classes yet"
-          body="Add your first class — its size powers the daily marking targets everywhere else in MarkFlow."
+          body="Add your first English class — its size powers the daily marking targets everywhere else in MarkFlow."
           action={
             <button type="button" className="btn btn-pen" onClick={() => setDraft(emptyDraft)}>
               <Plus size={15} /> Add your first class
@@ -136,9 +134,7 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
                   <h3 className="font-display text-[1.3rem] font-semibold tracking-tight text-ink">
                     {c.name}
                   </h3>
-                  <p className="text-[0.78rem] text-ink-soft">
-                    {[c.yearGroup, c.subject].filter(Boolean).join(" · ") || "—"}
-                  </p>
+                  <p className="text-[0.78rem] text-ink-soft">{c.yearGroup || "—"}</p>
                 </div>
                 <span className={`chip !border-0 ${toneClass[c.healthTone]}`}>{c.healthLabel}</span>
               </div>
@@ -157,35 +153,36 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-line pt-3.5">
-                <p className="flex items-center gap-1.5 text-[0.74rem] font-medium text-ink-soft">
-                  <CalendarDays size={13} className="text-ink-faint" />
-                  {c.nextLabel ?? "No cycle booked"}
+                <p className="flex min-w-0 items-center gap-1.5 pr-2 text-[0.74rem] font-medium text-ink-soft">
+                  <CalendarDays size={13} className="shrink-0 text-ink-faint" />
+                  <span className="truncate">{c.nextLabel ?? "No cycle booked"}</span>
                 </p>
-                <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="flex shrink-0 gap-1 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
                   <button
                     type="button"
-                    className="btn btn-quiet !p-2"
-                    title="Edit"
+                    className="btn btn-quiet !p-2.5"
+                    title="Edit class"
+                    aria-label={`Edit ${c.name}`}
                     onClick={() =>
                       setDraft({
                         id: c.id,
                         name: c.name,
-                        subject: c.subject,
                         yearGroup: c.yearGroup || "Year 9",
                         studentCount: String(c.studentCount),
                         color: c.color,
                       })
                     }
                   >
-                    <Pencil size={14} />
+                    <Pencil size={15} />
                   </button>
                   <button
                     type="button"
-                    className="btn btn-quiet !p-2 hover:!text-bad"
-                    title="Delete"
+                    className="btn btn-quiet !p-2.5 hover:!text-bad"
+                    title="Delete class"
+                    aria-label={`Delete ${c.name}`}
                     onClick={() => setDeleting(c)}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={15} />
                   </button>
                 </div>
               </div>
@@ -199,7 +196,7 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
         open={draft !== null}
         onClose={() => setDraft(null)}
         title={draft?.id ? "Edit class" : "Add a class"}
-        subtitle="The class size sets your daily marking minimums."
+        subtitle="All classes are English. Class size sets your daily marking minimums."
       >
         {draft ? (
           <form onSubmit={submit} className="space-y-4">
@@ -214,7 +211,7 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
                 <input
                   id="cf-name"
                   className="input"
-                  placeholder="e.g. 9X/Sc1"
+                  placeholder="e.g. 9A"
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   required
@@ -233,16 +230,6 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
                     <option key={y}>{y}</option>
                   ))}
                 </select>
-              </div>
-              <div className="col-span-2 sm:col-span-1">
-                <label className="label" htmlFor="cf-subject">Subject</label>
-                <input
-                  id="cf-subject"
-                  className="input"
-                  placeholder="e.g. Science"
-                  value={draft.subject}
-                  onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
-                />
               </div>
               <div className="col-span-2 sm:col-span-1">
                 <label className="label" htmlFor="cf-count">Students</label>
@@ -295,7 +282,7 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
         open={deleting !== null}
         onClose={() => setDeleting(null)}
         title={`Delete ${deleting?.name}?`}
-        subtitle="Its timetable slots and marking cycles will be removed too."
+        subtitle="Its timetable slots and marking cycles will be removed too. This cannot be undone."
       >
         <div className="flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={() => setDeleting(null)}>
@@ -303,7 +290,7 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
           </button>
           <button
             type="button"
-            className="btn btn-pen"
+            className="btn btn-danger"
             disabled={pending}
             onClick={() => {
               if (!deleting) return;
