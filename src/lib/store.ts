@@ -10,10 +10,10 @@
 
 import { useSyncExternalStore } from "react";
 import { todayStr } from "@/lib/dates";
-import { DEFAULT_SETTINGS, type Database } from "@/lib/types";
+import { DEFAULT_SETTINGS, type Database, type PlanRow } from "@/lib/types";
 
 export const STORAGE_KEY = "markflow.db.v1";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export function emptyDatabase(): Database {
   return {
@@ -51,6 +51,10 @@ function readStorage(): Database {
 
 function migrate(input: Partial<Database>): Database {
   const base = emptyDatabase();
+  const plans = (input.plans ?? []).map((plan) => ({
+    ...plan,
+    deferredCount: (plan as Partial<PlanRow>).deferredCount ?? 0,
+  })) as PlanRow[];
   return {
     ...base,
     ...input,
@@ -59,7 +63,7 @@ function migrate(input: Partial<Database>): Database {
     settings: { ...base.settings, ...(input.settings ?? {}) },
     classes: input.classes ?? [],
     slots: input.slots ?? [],
-    plans: input.plans ?? [],
+    plans,
     entries: input.entries ?? [],
     photo: input.photo ?? null,
   };
@@ -70,7 +74,6 @@ function persist(db: Database) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   } catch (err) {
-    // Quota exceeded (usually a very large timetable photo).
     console.warn("MarkFlow: could not save to device storage", err);
   }
 }
@@ -127,7 +130,6 @@ function structuredCloneSafe<T>(value: T): T {
 function subscribe(listener: () => void) {
   listeners.add(listener);
   if (typeof window !== "undefined") {
-    // Keep multiple tabs / WebView instances in sync.
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
         memory = readStorage();
@@ -149,10 +151,6 @@ const SERVER_SNAPSHOT: Database | null = null;
 /* React bindings                                                      */
 /* ------------------------------------------------------------------ */
 
-/**
- * Returns the device database, or `null` on the very first (server-rendered)
- * paint so static HTML and the hydrated client always agree.
- */
 export function useDb(): Database | null {
   return useSyncExternalStore(
     subscribe,
@@ -163,7 +161,6 @@ export function useDb(): Database | null {
 
 export type Bundle = Database & { today: string };
 
-/** Everything a screen needs, in one object (the old `getBundle`). */
 export function useBundle(): Bundle | null {
   const db = useDb();
   if (!db) return null;
