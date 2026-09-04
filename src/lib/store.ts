@@ -13,7 +13,7 @@ import { todayStr } from "@/lib/dates";
 import { DEFAULT_SETTINGS, type Database, type PlanRow } from "@/lib/types";
 
 export const STORAGE_KEY = "markflow.db.v1";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export function emptyDatabase(): Database {
   return {
@@ -55,13 +55,17 @@ function migrate(input: Partial<Database>): Database {
     ...plan,
     deferredCount: (plan as Partial<PlanRow>).deferredCount ?? 0,
   })) as PlanRow[];
+  const classes = (input.classes ?? []).map((classRow) => ({
+    ...classRow,
+    subject: "English",
+  }));
   return {
     ...base,
     ...input,
     version: DB_VERSION,
     profile: { ...base.profile, ...(input.profile ?? {}) },
     settings: { ...base.settings, ...(input.settings ?? {}) },
-    classes: input.classes ?? [],
+    classes,
     slots: input.slots ?? [],
     plans,
     entries: input.entries ?? [],
