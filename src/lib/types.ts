@@ -42,6 +42,8 @@ export type PlanRow = {
   dailyRate: number;
   locked: boolean;
   late: boolean;
+  /** Number of deliberate "can't do it today" moves. */
+  deferredCount: number;
   returnedAt: string | null;
   notes: string;
   createdAt: string;
