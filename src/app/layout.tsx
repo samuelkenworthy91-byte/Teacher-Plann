@@ -5,6 +5,7 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/fraunces";
 import "@fontsource-variable/fraunces/opsz-italic.css";
 import "./globals.css";
+import "./mobile-fit.css";
 import { NativeBridge } from "@/components/native-bridge";
 import { NotificationBridge } from "@/components/notification-bridge";
 
