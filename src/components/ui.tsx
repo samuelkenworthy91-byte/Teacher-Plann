@@ -5,29 +5,20 @@ import { X } from "lucide-react";
 export function Logo({ dark = false, size = 34 }: { dark?: boolean; size?: number }) {
   return (
     <span className="inline-flex items-center gap-2.5">
-      {/* Matches the app icon: paper tile, marker-stroke M, pen tick */}
       <span
-        className="grid place-items-center rounded-[28%]"
+        className="grid place-items-center rounded-xl"
         style={{
           width: size,
           height: size,
-          background: "var(--color-cream)",
-          border: dark ? "1px solid rgba(244,239,228,0.18)" : "1px solid var(--color-line)",
-          boxShadow: "0 6px 16px -8px rgba(33,29,23,.45)",
+          background: "var(--color-pen)",
+          boxShadow: "0 6px 16px -6px rgba(217,72,31,.65)",
         }}
       >
-        <svg width={size * 0.74} height={size * 0.74} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <svg width={size * 0.58} height={size * 0.58} viewBox="0 0 24 24" fill="none" aria-hidden>
           <path
-            d="M6.2 15.4V8.2l5.8 4.4 5.8-4.4v7.2"
-            stroke="var(--color-ink)"
-            strokeWidth="2.3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M5.4 18.1l4.9 1.5 6.7-2.1"
-            stroke="var(--color-pen)"
-            strokeWidth="1.8"
+            d="M4 13.5 9.2 18.5 20 6.5"
+            stroke="#fff"
+            strokeWidth="3.2"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -143,7 +134,7 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4 backdrop-blur-[3px]"
+      className="safe-inset fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4 backdrop-blur-[3px]"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

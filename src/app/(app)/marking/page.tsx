@@ -1,22 +1,18 @@
-import type { Metadata } from "next";
+"use client";
+
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Archive, ArrowDownToLine, History, PenLine } from "lucide-react";
-import { getCurrentUser } from "@/lib/auth";
-import { getBundle } from "@/lib/queries";
-import { computeDeferHandback, requiredToday, suggestAdhocHandback } from "@/lib/engine";
+import { requiredToday } from "@/lib/engine";
 import { pretty, prettyShort, schoolDaysInclusive } from "@/lib/dates";
 import { Dot, EmptyState } from "@/components/ui";
 import { FocusPanel } from "@/components/dashboard-widgets";
-import { AdhocCollect, DeferButton, RowActions, TaskCreator } from "@/components/marking-widgets";
+import { RowActions, TaskCreator } from "@/components/marking-widgets";
+import { useBundle } from "@/lib/store";
 
-export const metadata: Metadata = { title: "Marking" };
-export const dynamic = "force-dynamic";
-
-export default async function MarkingPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const { classes, slots, plans, entries, settings, today } = await getBundle(user.id);
+export default function MarkingPage() {
+  const bundle = useBundle();
+  if (!bundle) return null;
+  const { classes, plans, entries, today } = bundle;
 
   const classById = new Map(classes.map((c) => [c.id, c]));
   const desk = plans
@@ -37,26 +33,14 @@ export default async function MarkingPage() {
           <p className="text-[0.72rem] font-bold uppercase tracking-[0.16em] text-pen">The desk</p>
           <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-ink">Marking</h1>
           <p className="mt-1 max-w-xl text-[0.88rem] text-ink-soft">
-            One pile at a time. Log books as you go — the daily minimum always reflects what&apos;s
+            One pile at a time. Log books as you go — the daily minimum always reflects what's
             genuinely left.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <AdhocCollect
-            classes={classes.map((c) => ({
-              id: c.id,
-              name: c.name,
-              color: c.color,
-              studentCount: c.studentCount,
-              suggestedHandback: suggestAdhocHandback({ classId: c.id, slots, settings, today }).date,
-            }))}
-            today={today}
-          />
-          <TaskCreator
-            classes={classes.map((c) => ({ id: c.id, name: c.name, color: c.color, studentCount: c.studentCount }))}
-            today={today}
-          />
-        </div>
+        <TaskCreator
+          classes={classes.map((c) => ({ id: c.id, name: c.name, color: c.color, studentCount: c.studentCount }))}
+          today={today}
+        />
       </header>
 
       {/* On the desk */}
@@ -69,7 +53,7 @@ export default async function MarkingPage() {
               body="When a scheduled collection day arrives — or you create a deadline task — the pile lands here with its daily pace."
               action={
                 <Link href="/planner" className="btn btn-ghost">
-                  <ArrowDownToLine size={14} /> See what&apos;s due
+                  <ArrowDownToLine size={14} /> See what's due
                 </Link>
               }
             />
@@ -85,8 +69,6 @@ export default async function MarkingPage() {
                   color={cls?.color ?? "#888"}
                   title={p.title}
                   handbackLabel={pretty(p.handbackDate)}
-                  nextHandbackLabel={pretty(computeDeferHandback({ plan: p, slots, today }).handbackDate)}
-                  deferredCount={p.deferredCount}
                   totalBooks={p.totalBooks}
                   markedCount={p.markedCount}
                   requiredNow={requiredToday(p, today)}
@@ -138,15 +120,10 @@ export default async function MarkingPage() {
                         {p.title} · {p.totalBooks} books · ≥{p.dailyRate}/day
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {p.collectDate <= today ? (
-                        <DeferButton planId={p.id} kind="collect" label="Move to next lesson" />
-                      ) : null}
-                      <p className="text-right text-[0.74rem] font-semibold text-ink">
-                        {p.collectDate === today ? "Today" : prettyShort(p.collectDate)}
-                        {p.collectPeriod ? <span className="text-ink-faint"> · P{p.collectPeriod}</span> : null}
-                      </p>
-                    </div>
+                    <p className="text-right text-[0.74rem] font-semibold text-ink">
+                      {p.collectDate === today ? "Today" : prettyShort(p.collectDate)}
+                      {p.collectPeriod ? <span className="text-ink-faint"> · P{p.collectPeriod}</span> : null}
+                    </p>
                   </li>
                 );
               })}

@@ -1,4 +1,4 @@
-import type { ClassRow, PlanRow, SettingsRow, SlotRow } from "@/db/schema";
+import type { ClassRow, PlanRow, SettingsRow, SlotRow } from "@/lib/types";
 import {
   addDays,
   addSchoolDays,
@@ -62,15 +62,6 @@ export function firstLessonOnOrAfter(
   return list[0] ?? null;
 }
 
-/** First lesson of the class STRICTLY after the given date. */
-export function nextLessonAfter(
-  classId: number,
-  slots: SlotRow[],
-  date: string,
-): Occurrence | null {
-  return firstLessonOnOrAfter(classId, slots, addDays(date, 1));
-}
-
 /* ------------------------------------------------------------------ */
 /* Rates                                                               */
 /* ------------------------------------------------------------------ */
@@ -132,7 +123,7 @@ export function lastFeedbackDate(
   }
   if (last) return last;
   const created = classesById.get(classId)?.createdAt;
-  if (created) return created.toISOString().slice(0, 10);
+  if (created) return created.slice(0, 10);
   return addDays(new Date().toISOString().slice(0, 10), -7);
 }
 
@@ -207,12 +198,9 @@ export function generateSchedule(args: {
     }
 
     let chosen: { c: Occurrence; hb: Occurrence; late: boolean } | null = null;
-    /** First legal (in-window) collect, ignoring clashes — the crossover fallback. */
-    let firstLegal: { c: Occurrence; hb: Occurrence } | null = null;
 
     for (const c of candidates) {
       const hb = computeHandback(cls.id, slots, c, settings.windowDays);
-      if (!firstLegal) firstLegal = { c, hb };
       const iv = { start: c.date, end: hb.date };
       if (!busy.some((b) => overlaps(iv, b))) {
         chosen = { c, hb, late: cmp(c.date, job.latest) > 0 };
@@ -233,25 +221,6 @@ export function generateSchedule(args: {
       }
     }
 
-    // Crossover is a last resort — but sometimes it has to happen. If the
-    // only clash-free slot is SO far away that the class would blow through
-    // its max-gap promise, book the earliest legal slot instead and accept
-    // the overlap (it gets flagged on the diary). Waiting quietly is worse
-    // than two piles at once.
-    if (
-      chosen &&
-      firstLegal &&
-      cmp(chosen.c.date, job.latest) > 0 &&
-      cmp(firstLegal.c.date, chosen.c.date) < 0
-    ) {
-      chosen = { c: firstLegal.c, hb: firstLegal.hb, late: true };
-    }
-
-    if (!chosen && firstLegal && candidates.length > 0) {
-      // Total gridlock (every slot for 150 days clashes) — take the earliest.
-      chosen = { c: firstLegal.c, hb: firstLegal.hb, late: true };
-    }
-
     if (!chosen) continue;
 
     busy.push({ start: chosen.c.date, end: chosen.hb.date });
@@ -269,95 +238,6 @@ export function generateSchedule(args: {
 
   out.sort((a, b) => cmp(a.collectDate, b.collectDate));
   return out;
-}
-
-/* ------------------------------------------------------------------ */
-/* "Can't do it today" — deferral maths                                */
-/* ------------------------------------------------------------------ */
-
-export type DeferResult = {
-  collectDate: string;
-  collectPeriod: number;
-  handbackDate: string;
-  handbackPeriod: number;
-  dailyRate: number;
-};
-
-/**
- * The teacher can't collect a scheduled pile today → slide the whole
- * cycle to the class's NEXT lesson (a formative only happens in a
- * lesson, so that's the only legal move) and rebuild the window from
- * there. `fallbackDays` is used for classes with no timetable slots.
- */
-export function computeDeferCollect(args: {
-  plan: PlanRow;
-  slots: SlotRow[];
-  settings: SettingsRow;
-  today: string;
-  studentCount: number;
-}): DeferResult {
-  const { plan, slots, settings, today, studentCount } = args;
-  const lesson = nextLessonAfter(plan.classId, slots, today);
-  const collect = lesson ?? { date: addSchoolDays(today, 1), period: plan.collectPeriod ?? 1 };
-  const hb = computeHandback(plan.classId, slots, collect, settings.windowDays);
-  return {
-    collectDate: collect.date,
-    collectPeriod: collect.period,
-    handbackDate: hb.date,
-    handbackPeriod: hb.period,
-    dailyRate: dailyRateFor(plan.totalBooks || studentCount, collect.date, hb.date),
-  };
-}
-
-/**
- * The teacher can't keep the marking pace → push the hand-back to the
- * class's next lesson after the current date and spread what's left
- * across the extra days. Keeps the pile moving instead of quietly
- * failing the promise.
- */
-export function computeDeferHandback(args: {
-  plan: PlanRow;
-  slots: SlotRow[];
-  today: string;
-}): DeferResult {
-  const { plan, slots } = args;
-  // Work from today when the pile is already late, so the move always
-  // buys genuinely new days rather than re-landing on a past lesson.
-  const base = maxDate(args.today, plan.handbackDate);
-  const lesson = nextLessonAfter(plan.classId, slots, base);
-  const hb = lesson ?? { date: addSchoolDays(base, 2), period: plan.handbackPeriod ?? 1 };
-  const remaining = Math.max(1, plan.totalBooks - plan.markedCount);
-  return {
-    collectDate: plan.collectDate,
-    collectPeriod: plan.collectPeriod ?? 1,
-    handbackDate: hb.date,
-    handbackPeriod: hb.period,
-    // pace covers only what's actually left, so a half-marked pile
-    // doesn't get double-counted against the extra days
-    dailyRate: dailyRateFor(remaining, maxDate(args.today, plan.collectDate), hb.date),
-  };
-}
-
-/**
- * A pile the teacher took in OFF-schedule (assessment, mock, cover…).
- * Suggest the same sized window the smart planner uses, landing on the
- * class's next lesson after the window closes.
- */
-export function suggestAdhocHandback(args: {
-  classId: number;
-  slots: SlotRow[];
-  settings: SettingsRow;
-  today: string;
-}): { date: string; period: number | null } {
-  const { classId, slots, settings, today } = args;
-  const windowEnd = addSchoolDays(today, Math.max(0, settings.windowDays - 1));
-  const lesson = firstLessonOnOrAfter(classId, slots, windowEnd, 35);
-  return { date: lesson?.date ?? addSchoolDays(today, settings.windowDays), period: lesson?.period ?? null };
-}
-
-/** Lesson of this class TODAY, if any — used to label an off-schedule pile. */
-export function lessonToday(classId: number, slots: SlotRow[], today: string): Occurrence | null {
-  return lessonsFor(classId, slots, today, today)[0] ?? null;
 }
 
 /* ------------------------------------------------------------------ */

@@ -261,7 +261,7 @@ export function PhotoPanel({ initialPhoto }: { initialPhoto: string | null }) {
 
       {zoom ? (
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-ink/70 p-4 backdrop-blur-sm"
+          className="safe-inset fixed inset-0 z-50 grid place-items-center bg-ink/70 p-4 backdrop-blur-sm"
           onClick={() => setZoom(false)}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}

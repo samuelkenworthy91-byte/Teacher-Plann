@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useOptimistic, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   CalendarClock,
@@ -20,7 +19,6 @@ import {
   toggleLockAction,
   updatePlanAction,
 } from "@/actions/plans";
-import { DeferButton } from "@/components/marking-widgets";
 import { Dot, EmptyState, Modal, Spinner } from "@/components/ui";
 
 export type PlanVM = {
@@ -41,13 +39,11 @@ export type PlanVM = {
   markedCount: number;
   late: boolean;
   locked: boolean;
-  deferredCount: number;
   weekKey: string;
   isToday: boolean;
 };
 
 export function PlannerBoard({ plans, today }: { plans: PlanVM[]; today: string }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [flash, setFlash] = useState<string | null>(null);
   const [editing, setEditing] = useState<PlanVM | null>(null);
@@ -78,7 +74,6 @@ export function PlannerBoard({ plans, today }: { plans: PlanVM[]; today: string 
           : res.error ?? "Could not generate.",
       );
       setTimeout(() => setFlash(null), 4500);
-      router.refresh();
     });
   }
 
@@ -156,23 +151,10 @@ export function PlannerBoard({ plans, today }: { plans: PlanVM[]; today: string 
                             <TriangleAlert size={10} /> tight
                           </span>
                         ) : null}
-                        {p.deferredCount > 0 ? (
-                          <span
-                            className="chip !border-0 !bg-warn-soft !py-1 !text-[0.62rem] !text-warn"
-                            title="Moved because you couldn't do it on the day"
-                          >
-                            moved {p.deferredCount}×
-                          </span>
-                        ) : null}
                       </div>
                       <p className="text-[0.72rem] text-ink-soft">
                         {p.title} · {p.totalBooks} books
                       </p>
-                      {p.deferredCount > 0 ? (
-                        <p className="mt-0.5 text-[0.68rem] text-ink-faint">
-                          Diary rebalanced around this move.
-                        </p>
-                      ) : null}
                     </div>
 
                     <div className="flex items-center gap-2 text-[0.8rem] font-semibold text-ink">
@@ -201,20 +183,14 @@ export function PlannerBoard({ plans, today }: { plans: PlanVM[]; today: string 
 
                     <div className="ml-auto flex items-center gap-1">
                       {p.status === "scheduled" && p.collectDate <= today ? (
-                        <>
-                          <button
-                            type="button"
-                            className="btn btn-quiet !py-2 !text-[0.74rem] !text-pen"
-                            disabled={pending}
-                            onClick={() => startTransition(async () => void (await collectPlanAction(p.id)))}
-                          >
-                            Collected
-                          </button>
-                          <DeferButton planId={p.id} kind="collect" label="Move to next lesson" />
-                        </>
-                      ) : null}
-                      {p.status === "marking" ? (
-                        <DeferButton planId={p.id} kind="handback" label="Push hand-back" />
+                        <button
+                          type="button"
+                          className="btn btn-quiet !py-2 !text-[0.74rem] !text-pen"
+                          disabled={pending}
+                          onClick={() => startTransition(async () => void (await collectPlanAction(p.id)))}
+                        >
+                          Collected
+                        </button>
                       ) : null}
                       <button
                         type="button"

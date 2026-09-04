@@ -1,7 +1,6 @@
 "use client";
 
 import { useOptimistic, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { CalendarDays, Pencil, Plus, Trash2, TriangleAlert, Users } from "lucide-react";
 import { createClassAction, deleteClassAction, updateClassAction } from "@/actions/classes";
 import { Dot, EmptyState, Modal, Spinner } from "@/components/ui";
@@ -39,7 +38,6 @@ type Op =
   | { kind: "delete"; id: number };
 
 export function ClassManager({ classes }: { classes: ClassVM[] }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [deleting, setDeleting] = useState<ClassVM | null>(null);
@@ -86,7 +84,6 @@ export function ClassManager({ classes }: { classes: ClassVM[] }) {
       const res = draft.id ? await updateClassAction(fd) : await createClassAction(fd);
       if (!res.ok) {
         setError(res.error ?? "Something went wrong.");
-        router.refresh();
       } else {
         setDraft(null);
       }

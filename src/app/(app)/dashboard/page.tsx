@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+"use client";
+
 import Link from "next/link";
 import {
   ArrowDownToLine,
@@ -11,21 +12,17 @@ import {
   Timer,
   Users,
 } from "lucide-react";
-import { getCurrentUser } from "@/lib/auth";
-import { getBundle } from "@/lib/queries";
-import { computeClassHealth, computeDeferCollect, computeDeferHandback, requiredToday } from "@/lib/engine";
+import { computeClassHealth, requiredToday } from "@/lib/engine";
 import { addDays, pretty, prettyShort, schoolDaysInclusive, startOfWeek, todayStr, WEEKDAY_SHORT } from "@/lib/dates";
 import { Dot, EmptyState, styleDelay } from "@/components/ui";
 import { CollectHero, FocusPanel } from "@/components/dashboard-widgets";
-import { redirect } from "next/navigation";
+import { DemoDataButton } from "@/components/demo-data-button";
+import { useBundle } from "@/lib/store";
 
-export const metadata: Metadata = { title: "Today" };
-export const dynamic = "force-dynamic";
-
-export default async function DashboardPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const { classes, slots, plans, entries, settings, today } = await getBundle(user.id);
+export default function DashboardPage() {
+  const bundle = useBundle();
+  if (!bundle) return null;
+  const { classes, slots, plans, entries, settings, today } = bundle;
 
   /* ---------- onboarding ---------- */
   if (classes.length === 0) {
@@ -33,7 +30,7 @@ export default async function DashboardPage() {
       <div className="rise mx-auto max-w-2xl pt-6">
         <p className="text-[0.72rem] font-bold uppercase tracking-[0.16em] text-pen">Getting started</p>
         <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight text-ink">
-          Let&apos;s build your <span className="squiggle">marking rhythm</span>
+          Let's build your <span className="squiggle">marking rhythm</span>
         </h1>
         <p className="mt-3 text-[0.95rem] leading-relaxed text-ink-soft">
           Three quick steps and MarkFlow starts telling you what to collect, how much to mark each
@@ -54,6 +51,15 @@ export default async function DashboardPage() {
               <p className="mt-3 text-[0.78rem] font-bold text-pen">{s.cta} →</p>
             </Link>
           ))}
+        </div>
+        <div className="mt-8 rounded-2xl border border-dashed border-line-strong bg-white/60 px-5 py-4 text-center">
+          <p className="text-[0.82rem] text-ink-soft">
+            Want to see it working first? Load a full demo timetable — you can wipe it any time from
+            Settings.
+          </p>
+          <div className="mt-3 flex justify-center">
+            <DemoDataButton />
+          </div>
         </div>
       </div>
     );
@@ -163,10 +169,6 @@ export default async function DashboardPage() {
             color={focusClass.color}
             title={focus.title}
             handbackLabel={pretty(focus.handbackDate)}
-            nextHandbackLabel={pretty(
-              computeDeferHandback({ plan: focus, slots, today }).handbackDate,
-            )}
-            deferredCount={focus.deferredCount}
             totalBooks={focus.totalBooks}
             markedCount={focus.markedCount}
             requiredNow={requiredToday(focus, today)}
@@ -184,15 +186,6 @@ export default async function DashboardPage() {
               period: p.collectPeriod,
               dailyRate: p.dailyRate,
               handbackLabel: pretty(p.handbackDate),
-              nextCollectLabel: pretty(
-                computeDeferCollect({
-                  plan: p,
-                  slots,
-                  settings,
-                  today,
-                  studentCount: classById.get(p.classId)?.studentCount ?? 30,
-                }).collectDate,
-              ),
             }))}
           />
         ) : (
@@ -203,7 +196,7 @@ export default async function DashboardPage() {
             <div className="min-w-0 flex-1">
               <p className="font-display text-lg font-semibold text-ink">No pile on your desk</p>
               <p className="text-sm text-ink-soft">
-                Nothing collected right now. Your next collection appears here the moment it&apos;s due.
+                Nothing collected right now. Your next collection appears here the moment it's due.
               </p>
             </div>
           </div>

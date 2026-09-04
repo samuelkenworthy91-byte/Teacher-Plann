@@ -1,14 +1,8 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import { ArrowDownToLine, CalendarOff, CheckCheck, Minus, PartyPopper, Plus } from "lucide-react";
-import {
-  collectPlanAction,
-  deferCollectAction,
-  deferHandbackAction,
-  logBooksAction,
-  returnPlanAction,
-} from "@/actions/plans";
+import { ArrowDownToLine, CheckCheck, Minus, PartyPopper, Plus } from "lucide-react";
+import { collectPlanAction, logBooksAction, returnPlanAction } from "@/actions/plans";
 import { Dot, ProgressRing, Spinner } from "@/components/ui";
 
 /* ------------------------------------------------------------------ */
@@ -21,10 +15,6 @@ export function FocusPanel(props: {
   color: string;
   title: string;
   handbackLabel: string;
-  /** Where the hand-back would move if the teacher says "can't keep the pace". */
-  nextHandbackLabel?: string;
-  /** Times this pile has already been moved with "can't do it today". */
-  deferredCount?: number;
   totalBooks: number;
   markedCount: number;
   requiredNow: number;
@@ -33,7 +23,6 @@ export function FocusPanel(props: {
 }) {
   const [pending, startTransition] = useTransition();
   const [confirmReturn, setConfirmReturn] = useState(false);
-  const [cantMark, setCantMark] = useState(false);
   const [custom, setCustom] = useState("");
 
   const [{ marked, loggedToday }, bump] = useOptimistic(
@@ -69,7 +58,7 @@ export function FocusPanel(props: {
             {props.className} handed back — cycle complete
           </p>
           <p className="mt-1 text-sm text-ink-soft">
-            The clock resets. {props.className}&apos;s next formative will be scheduled inside your 4–8
+            The clock resets. {props.className}'s next formative will be scheduled inside your 4–8
             lesson window.
           </p>
         </div>
@@ -105,11 +94,6 @@ export function FocusPanel(props: {
               {props.className}
             </span>
             <span className="chip">{props.title}</span>
-            {props.deferredCount && props.deferredCount > 0 ? (
-              <span className="chip !border-0 !bg-warn-soft !text-warn" title="Moved because you couldn't do it on the day">
-                <CalendarOff size={10} /> moved {props.deferredCount}×
-              </span>
-            ) : null}
             <span className={`chip ${onPace ? "!bg-good-soft !text-good !border-0" : "!bg-pen-soft !text-pen !border-0"}`}>
               {onPace ? "Today's pace hit" : `Mark ${needMoreToday}+ today`}
             </span>
@@ -190,62 +174,31 @@ export function FocusPanel(props: {
             ? "Every book marked — ready to go back."
             : `${props.totalBooks - marked} still to mark before the lesson.`}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {cantMark && props.nextHandbackLabel ? (
-            <>
-              <span className="text-[0.78rem] font-semibold text-ink">
-                No time? Hand back {props.nextHandbackLabel} instead?
-              </span>
-              <button
-                type="button"
-                className="btn btn-pen"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => void (await deferHandbackAction(props.planId)))
-                }
-              >
-                {pending ? <Spinner /> : <CalendarOff size={14} />} Yes, move it
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={() => setCantMark(false)}>
-                Keep {props.handbackLabel}
-              </button>
-            </>
-          ) : (
+        {confirmReturn ? (
+          <span className="flex items-center gap-2">
+            <span className="text-[0.78rem] font-semibold text-ink">Handed back in class?</span>
             <button
               type="button"
-              className="btn btn-quiet !text-[0.74rem]"
-              onClick={() => setCantMark(true)}
-              title="Can't keep the pace? Push the hand-back to this class's next lesson and rebalance the diary."
+              className="btn btn-pen"
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  setReturned(true);
+                  await returnPlanAction(props.planId);
+                })
+              }
             >
-              <CalendarOff size={13} /> Can&apos;t keep the pace today?
+              <CheckCheck size={14} /> Yes, done
             </button>
-          )}
-          {confirmReturn ? (
-            <span className="flex items-center gap-2">
-              <span className="text-[0.78rem] font-semibold text-ink">Handed back in class?</span>
-              <button
-                type="button"
-                className="btn btn-pen"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    setReturned(true);
-                    await returnPlanAction(props.planId);
-                  })
-                }
-              >
-                <CheckCheck size={14} /> Yes, done
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={() => setConfirmReturn(false)}>
-                Not yet
-              </button>
-            </span>
-          ) : (
-            <button type="button" className="btn btn-ghost" onClick={() => setConfirmReturn(true)}>
-              <CheckCheck size={14} /> Mark as handed back
+            <button type="button" className="btn btn-ghost" onClick={() => setConfirmReturn(false)}>
+              Not yet
             </button>
-          )}
-        </div>
+          </span>
+        ) : (
+          <button type="button" className="btn btn-ghost" onClick={() => setConfirmReturn(true)}>
+            <CheckCheck size={14} /> Mark as handed back
+          </button>
+        )}
       </div>
     </div>
   );
@@ -265,8 +218,6 @@ export function CollectHero({
     period: number | null;
     dailyRate: number;
     handbackLabel: string;
-    /** "Fri 20 Jun" — where collection moves if the teacher can't do it today. */
-    nextCollectLabel?: string;
   }[];
 }) {
   const [pending, startTransition] = useTransition();
@@ -274,7 +225,6 @@ export function CollectHero({
     {},
     (state, id) => ({ ...state, [id]: true }),
   );
-  const [cantCollect, setCantCollect] = useState<number | null>(null);
 
   return (
     <div className="space-y-3">
@@ -289,49 +239,12 @@ export function CollectHero({
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-display text-[1.25rem] font-semibold leading-snug text-ink">
-                Collect {it.className}&apos;s books today{it.period ? ` — Period ${it.period}` : ""}
+                Collect {it.className}'s books today{it.period ? ` — Period ${it.period}` : ""}
               </p>
               <p className="mt-0.5 text-[0.82rem] text-ink-soft">
                 Then mark ≈ <strong className="text-ink">{it.dailyRate}/day</strong> and hand them
                 back on {it.handbackLabel}.
               </p>
-              {cantCollect === it.planId ? (
-                <span className="pop mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-warn-soft px-3 py-2">
-                  <span className="text-[0.78rem] font-semibold text-warn">
-                    Can&apos;t get them today? I&apos;ll slide it to {it.className}&apos;s next
-                    lesson{it.nextCollectLabel ? ` (${it.nextCollectLabel})` : ""} and rebalance
-                    everything else.
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-pen !py-2"
-                    disabled={pending}
-                    onClick={() =>
-                      startTransition(async () => {
-                        markCollected(it.planId);
-                        await deferCollectAction(it.planId);
-                      })
-                    }
-                  >
-                    {pending ? <Spinner /> : <CalendarOff size={13} />} Move it
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost !py-2"
-                    onClick={() => setCantCollect(null)}
-                  >
-                    Keep today
-                  </button>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-quiet -ml-2 !py-1.5 !text-[0.72rem]"
-                  onClick={() => setCantCollect(it.planId)}
-                >
-                  <CalendarOff size={12} /> I can&apos;t collect today
-                </button>
-              )}
             </div>
             <button
               type="button"

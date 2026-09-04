@@ -3,18 +3,10 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { CheckCircle2, Save } from "lucide-react";
 import { saveSettingsAction } from "@/actions/settings";
-import type { SettingsRow } from "@/db/schema";
+import type { SettingsRow } from "@/lib/types";
 import { Spinner } from "@/components/ui";
 
-export function SettingsForm({
-  settings,
-  email,
-  name,
-}: {
-  settings: SettingsRow;
-  email: string;
-  name: string;
-}) {
+export function SettingsForm({ settings, name }: { settings: SettingsRow; name: string }) {
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,15 +63,22 @@ export function SettingsForm({
 
       <hr className="divider" />
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <span className="label">Name</span>
-          <p className="rounded-lg bg-cream/70 px-3 py-2.5 text-[0.85rem] font-medium text-ink">{name}</p>
-        </div>
-        <div>
-          <span className="label">Email</span>
-          <p className="truncate rounded-lg bg-cream/70 px-3 py-2.5 text-[0.85rem] font-medium text-ink">{email}</p>
-        </div>
+      <div>
+        <label className="label" htmlFor="profile-name">
+          Your name
+        </label>
+        <input
+          id="profile-name"
+          name="name"
+          className="input"
+          defaultValue={name}
+          minLength={2}
+          maxLength={40}
+          required
+        />
+        <p className="mt-1 text-[0.7rem] text-ink-faint">
+          Only ever stored on this device — MarkFlow never sends your data anywhere.
+        </p>
       </div>
 
       {error ? <p className="rounded-xl bg-bad-soft px-4 py-3 text-sm font-medium text-bad">{error}</p> : null}

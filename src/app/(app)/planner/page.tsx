@@ -1,22 +1,17 @@
-import type { Metadata } from "next";
+"use client";
+
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { CalendarRange, GitMerge, ShieldCheck, TriangleAlert } from "lucide-react";
-import { getCurrentUser } from "@/lib/auth";
-import { getBundle } from "@/lib/queries";
-import { findClashes, suggestAdhocHandback, weeklyLoad } from "@/lib/engine";
+import { CalendarRange, ShieldCheck, TriangleAlert } from "lucide-react";
+import { findClashes, weeklyLoad } from "@/lib/engine";
 import { pretty, prettyShort, startOfWeek } from "@/lib/dates";
 import { EmptyState } from "@/components/ui";
 import { PlannerBoard, type PlanVM } from "@/components/planner-board";
-import { AdhocCollect } from "@/components/marking-widgets";
+import { useBundle } from "@/lib/store";
 
-export const metadata: Metadata = { title: "Smart Planner" };
-export const dynamic = "force-dynamic";
-
-export default async function PlannerPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const { classes, slots, plans, settings, today } = await getBundle(user.id);
+export default function PlannerPage() {
+  const bundle = useBundle();
+  if (!bundle) return null;
+  const { classes, slots, plans, settings, today } = bundle;
 
   if (classes.length === 0 || slots.length === 0) {
     return (
@@ -69,47 +64,27 @@ export default async function PlannerPage() {
       markedCount: p.markedCount,
       late: p.late,
       locked: p.locked,
-      deferredCount: p.deferredCount,
       weekKey: startOfWeek(p.collectDate),
       isToday: p.collectDate === today || p.handbackDate === today,
     };
   });
 
-  // Crossovers caused by off-schedule piles (assessments, deferrals) are
-  // expected — the planner only allows them when the alternative is a class
-  // blowing its max-gap promise.
-  const forcedClashes = clashes.filter(({ a, b }) => a.locked || b.locked);
-
   return (
     <div className="space-y-6">
-      <header className="rise flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[0.72rem] font-bold uppercase tracking-[0.16em] text-pen">The engine</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-ink">
-            Smart planner
-          </h1>
-          <p className="mt-1 max-w-2xl text-[0.88rem] leading-relaxed text-ink-soft">
-            Every class gets a formative every{" "}
-            <strong className="text-ink">
-              {settings.minLessons}–{settings.maxLessons} lessons
-            </strong>
-            , never more than <strong className="text-ink">{settings.maxGapDays} days</strong> between
-            hand-backs, and windows are staggered so{" "}
-            <strong className="text-ink">only one pile</strong> is ever on your desk.
-          </p>
-        </div>
-        {classes.length > 0 ? (
-          <AdhocCollect
-            classes={classes.map((c) => ({
-              id: c.id,
-              name: c.name,
-              color: c.color,
-              studentCount: c.studentCount,
-              suggestedHandback: suggestAdhocHandback({ classId: c.id, slots, settings, today }).date,
-            }))}
-            today={today}
-          />
-        ) : null}
+      <header className="rise">
+        <p className="text-[0.72rem] font-bold uppercase tracking-[0.16em] text-pen">The engine</p>
+        <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-ink">
+          Smart planner
+        </h1>
+        <p className="mt-1 max-w-2xl text-[0.88rem] leading-relaxed text-ink-soft">
+          Every class gets a formative every{" "}
+          <strong className="text-ink">
+            {settings.minLessons}–{settings.maxLessons} lessons
+          </strong>
+          , never more than <strong className="text-ink">{settings.maxGapDays} days</strong> between
+          hand-backs, and windows are staggered so{" "}
+          <strong className="text-ink">only one pile</strong> is ever on your desk.
+        </p>
       </header>
 
       {/* Clash banner */}
@@ -117,18 +92,7 @@ export default async function PlannerPage() {
         <div className="rise flex items-center gap-3 rounded-2xl border border-good/25 bg-good-soft px-5 py-4" style={{ animationDelay: "40ms" }}>
           <ShieldCheck size={20} className="shrink-0 text-good" />
           <p className="text-[0.85rem] font-medium text-good">
-            No clashes in the diary — you&apos;ll never be marking two classes at once.
-          </p>
-        </div>
-      ) : forcedClashes.length === clashes.length ? (
-        <div className="rise rounded-2xl border border-warn/30 bg-warn-soft px-5 py-4" style={{ animationDelay: "40ms" }}>
-          <p className="flex items-center gap-2 text-[0.85rem] font-bold text-warn">
-            <GitMerge size={17} /> {clashes.length} expected crossover{clashes.length === 1 ? "" : "s"}
-          </p>
-          <p className="mt-1 text-[0.78rem] leading-relaxed text-warn">
-            An off-schedule pile or a moved window is sitting on another one — the only alternative
-            was a class breaking its {settings.maxGapDays}-day feedback promise. It&apos;s deliberate,
-            not a mistake.
+            No clashes in the diary — you'll never be marking two classes at once.
           </p>
         </div>
       ) : (
@@ -137,9 +101,8 @@ export default async function PlannerPage() {
             <TriangleAlert size={17} /> {clashes.length} overlapping window
             {clashes.length === 1 ? "" : "s"}
           </p>
-          <p className="mt-1 text-[0.78rem] leading-relaxed text-warn">
-            Two piles at once — edit dates below, hit &quot;Can&apos;t today&quot; to slide one along,
-            or regenerate to re-stagger the diary.
+          <p className="mt-1 text-[0.78rem] text-warn">
+            Two piles at once — edit dates below, or regenerate to re-stagger the diary.
           </p>
         </div>
       )}

@@ -8,7 +8,6 @@ import {
   CalendarRange,
   Flame,
   LayoutDashboard,
-  LogOut,
   Menu,
   PenLine,
   SlidersHorizontal,
@@ -17,8 +16,6 @@ import {
   X,
 } from "lucide-react";
 import { Logo, Dot } from "@/components/ui";
-import { logoutAction } from "@/actions/auth";
-import { PushPing } from "@/components/push-ping";
 import type { Notice } from "@/lib/engine";
 
 const NAV = [
@@ -43,14 +40,12 @@ export function Shell({
   notices,
   activeCount,
   dateLabel,
-  hasPushSubscriptions = false,
   children,
 }: {
   userName: string;
   notices: Notice[];
   activeCount: number;
   dateLabel: string;
-  hasPushSubscriptions?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -99,28 +94,24 @@ export function Shell({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-cream">{userName}</p>
-          <p className="text-[0.7rem] text-cream/45">Teacher account</p>
+          <p className="text-[0.7rem] text-cream/45">Saved on this device</p>
         </div>
-        <form action={logoutAction}>
-          <button
-            type="submit"
-            className="rounded-lg p-2 text-cream/50 transition-colors hover:bg-cream/10 hover:text-cream"
-            title="Sign out"
-          >
-            <LogOut size={16} />
-          </button>
-        </form>
+        <Link
+          href="/settings"
+          onClick={() => setDrawer(false)}
+          className="rounded-lg p-2 text-cream/50 transition-colors hover:bg-cream/10 hover:text-cream"
+          title="Settings"
+        >
+          <SlidersHorizontal size={16} />
+        </Link>
       </div>
     </div>
   );
 
   return (
     <div className="min-h-screen">
-      {/* Fires the daily push digest once per day (server dedupes). */}
-      <PushPing hasSubscriptions={hasPushSubscriptions} />
-
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col bg-dark py-6 lg:flex">
+      <aside className="safe-top safe-bottom fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col bg-dark py-6 lg:flex">
         <div className="px-7 pb-7">
           <Logo dark />
         </div>
@@ -138,7 +129,7 @@ export function Shell({
       {drawer ? (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-ink/50 backdrop-blur-[2px]" onClick={() => setDrawer(false)} />
-          <aside className="pop absolute inset-y-0 left-0 flex w-[272px] flex-col bg-dark py-6 shadow-2xl">
+          <aside className="pop safe-top safe-bottom absolute inset-y-0 left-0 flex w-[272px] flex-col bg-dark py-6 shadow-2xl">
             <div className="flex items-center justify-between px-7 pb-7">
               <Logo dark />
               <button className="rounded-lg p-1.5 text-cream/60 hover:bg-cream/10" onClick={() => setDrawer(false)}>
@@ -155,7 +146,7 @@ export function Shell({
       {/* Main column */}
       <div className="lg:pl-[264px]">
         {/* Topbar */}
-        <header className="sticky top-0 z-20 border-b border-line bg-paper/85 backdrop-blur-md">
+        <header className="safe-sticky-top safe-x sticky z-20 border-b border-line bg-paper/85 backdrop-blur-md">
           <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
             <button
               className="btn btn-quiet -ml-2 !p-2 lg:hidden"
@@ -216,7 +207,9 @@ export function Shell({
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-6xl px-4 pb-20 pt-8 sm:px-6">{children}</main>
+        <main className="safe-x mx-auto w-full max-w-6xl px-4 pb-20 pt-8 sm:px-6">
+          <div className="safe-bottom">{children}</div>
+        </main>
       </div>
     </div>
   );

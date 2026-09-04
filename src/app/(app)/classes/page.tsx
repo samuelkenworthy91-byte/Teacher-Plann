@@ -1,18 +1,14 @@
-import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
-import { getBundle } from "@/lib/queries";
+"use client";
+
 import { computeClassHealth } from "@/lib/engine";
 import { prettyShort } from "@/lib/dates";
 import { ClassManager, type ClassVM } from "@/components/class-manager";
+import { useBundle } from "@/lib/store";
 
-export const metadata: Metadata = { title: "My Classes" };
-export const dynamic = "force-dynamic";
-
-export default async function ClassesPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const { classes, slots, plans, settings, today } = await getBundle(user.id);
+export default function ClassesPage() {
+  const bundle = useBundle();
+  if (!bundle) return null;
+  const { classes, slots, plans, settings, today } = bundle;
 
   const vms: ClassVM[] = classes.map((c) => {
     const h = computeClassHealth(c, slots, plans, settings, today);
@@ -44,7 +40,7 @@ export default async function ClassesPage() {
         <p className="text-[0.72rem] font-bold uppercase tracking-[0.16em] text-pen">Core resource</p>
         <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-ink">My classes</h1>
         <p className="mt-1 max-w-lg text-[0.88rem] text-ink-soft">
-          Class sizes drive every &quot;mark N a day&quot; calculation — keep them honest.
+          Class sizes drive every "mark N a day" calculation — keep them honest.
         </p>
       </header>
       <ClassManager classes={vms} />

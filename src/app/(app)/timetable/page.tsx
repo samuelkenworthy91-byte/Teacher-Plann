@@ -1,21 +1,17 @@
-import type { Metadata } from "next";
+"use client";
+
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Camera, Sparkles, Users } from "lucide-react";
-import { getCurrentUser } from "@/lib/auth";
-import { getBundle } from "@/lib/queries";
 import { Dot, EmptyState } from "@/components/ui";
 import { PhotoPanel, TimetableEditor } from "@/components/timetable-editor";
-
-export const metadata: Metadata = { title: "Timetable" };
-export const dynamic = "force-dynamic";
+import { useBundle } from "@/lib/store";
 
 const PERIODS = [1, 2, 3, 4, 5, 6];
 
-export default async function TimetablePage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const { classes, slots, photo } = await getBundle(user.id);
+export default function TimetablePage() {
+  const bundle = useBundle();
+  if (!bundle) return null;
+  const { classes, slots, photo } = bundle;
 
   if (classes.length === 0) {
     return (
@@ -97,7 +93,7 @@ export default async function TimetablePage() {
             </ul>
             {perClass.some((c) => c.lessons === 0) ? (
               <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-[0.74rem] font-medium leading-relaxed text-warn">
-                Classes without lessons can&apos;t be planned — tap them into the grid.
+                Classes without lessons can't be planned — tap them into the grid.
               </p>
             ) : null}
           </div>
