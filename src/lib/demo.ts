@@ -1,9 +1,6 @@
 "use client";
 
-/**
- * Demo data, ported from the old database seed so the offline app can still
- * show a full week of a science teacher's marking rhythm with one tap.
- */
+/** Demo data for the offline Android app. */
 
 import { addDays, addSchoolDays, todayStr, weekday } from "@/lib/dates";
 import { computeHandback, dailyRateFor, generateSchedule } from "@/lib/engine";
@@ -22,22 +19,17 @@ const CLASS_SEED = [
 ] as const;
 
 const SLOT_SEED: [string, number, number][] = [
-  // Monday
   ["8X/Sc1", 1, 1], ["7X/Sc1", 1, 2], ["10A/Sc1", 1, 3], ["9X/Sc1", 1, 4], ["11A/Sc1", 1, 5],
-  // Tuesday
   ["9Y/Sc2", 2, 1], ["10B/Sc2", 2, 2], ["8X/Sc1", 2, 3], ["7Y/Sc2", 2, 4], ["11A/Sc1", 2, 5],
-  // Wednesday
   ["7X/Sc1", 3, 1], ["10B/Sc2", 3, 2], ["9X/Sc1", 3, 3], ["10A/Sc1", 3, 4], ["9Y/Sc2", 3, 5],
-  // Thursday
   ["10A/Sc1", 4, 1], ["7Y/Sc2", 4, 2], ["10B/Sc2", 4, 3], ["8X/Sc1", 4, 4], ["11A/Sc1", 4, 5],
-  // Friday
   ["9X/Sc1", 5, 1], ["9Y/Sc2", 5, 2], ["7X/Sc1", 5, 3], ["10A/Sc1", 5, 4], ["11A/Sc1", 5, 6],
 ];
 
 export function buildDemoDatabase(): Database {
   const db = emptyDatabase();
   const today = todayStr();
-  const dow = weekday(today); // 0 Sun … 6 Sat
+  const dow = weekday(today);
   let seq = 1;
   const id = () => ++seq;
 
@@ -78,13 +70,13 @@ export function buildDemoDatabase(): Database {
     dailyRate: 6,
     locked: false,
     late: false,
+    deferredCount: 0,
     returnedAt: null,
     notes: "",
     createdAt: today,
     ...over,
   });
 
-  /* --- two completed cycles, with the daily pace they were marked at --- */
   const mkReturned = (name: string, collectOffset: number, handbackOffset: number, pace: number[]) => {
     const cls = byName.get(name)!;
     const collect = addDays(today, collectOffset);
@@ -111,7 +103,6 @@ export function buildDemoDatabase(): Database {
   mkReturned("9X/Sc1", -19, -12, [6, 6, 6, 6, 6]);
   mkReturned("7X/Sc1", -13, -8, [7, 6, 6, 6, 5]);
 
-  /* --- live pile: 10A collected two school days ago --- */
   const tenA = byName.get("10A/Sc1")!;
   const collect10A = addSchoolDays(today, -2);
   const handback10A = addSchoolDays(today, 3);
@@ -132,7 +123,6 @@ export function buildDemoDatabase(): Database {
   const secondDay = addSchoolDays(collect10A, 1);
   entries.push({ id: id(), planId: active.id, date: secondDay, count: 6, createdAt: secondDay });
 
-  /* --- due today: collect 8X in today's lesson --- */
   const eightX = byName.get("8X/Sc1")!;
   const eightXPeriod =
     (dow >= 1 && dow <= 5 ? SLOT_SEED.find(([n, d]) => n === "8X/Sc1" && d === dow)?.[2] : 3) ?? 3;
@@ -151,7 +141,6 @@ export function buildDemoDatabase(): Database {
     }),
   );
 
-  /* --- let the engine fill the rest of the diary --- */
   const suggestions = generateSchedule({ classes, slots, plans, settings: db.settings, today });
   for (const s of suggestions) {
     plans.push(
@@ -177,7 +166,6 @@ export function buildDemoDatabase(): Database {
   return db;
 }
 
-/** Replace everything on the device with the demo timetable. */
 export function loadDemoData() {
   replaceDb(buildDemoDatabase());
 }
