@@ -7,15 +7,15 @@ import type { ClassRow } from "@/lib/types";
 export type ActionResult = { ok: boolean; error?: string; id?: number };
 
 const byName = (a: ClassRow, b: ClassRow) => a.name.localeCompare(b.name);
+const SUBJECT = "English";
 
 export async function createClassAction(formData: FormData): Promise<ActionResult> {
   const name = String(formData.get("name") ?? "").trim();
-  const subject = String(formData.get("subject") ?? "").trim();
   const yearGroup = String(formData.get("yearGroup") ?? "").trim();
   const color = String(formData.get("color") ?? "#D94F26");
   const studentCount = clampInt(formData.get("studentCount"), 1, 60, 30);
 
-  if (name.length < 2) return { ok: false, error: "Give the class a name, e.g. 9X/Sc1." };
+  if (name.length < 2) return { ok: false, error: "Give the class a name, e.g. 9A." };
   if (!/^#[0-9a-fA-F]{6}$/.test(color)) return { ok: false, error: "Pick a colour." };
 
   let id = 0;
@@ -23,7 +23,7 @@ export async function createClassAction(formData: FormData): Promise<ActionResul
     id = nextId(db);
     db.classes = [
       ...db.classes,
-      { id, name, subject, yearGroup, studentCount, color, createdAt: todayStr() },
+      { id, name, subject: SUBJECT, yearGroup, studentCount, color, createdAt: todayStr() },
     ].sort(byName);
   });
   return { ok: true, id };
@@ -32,7 +32,6 @@ export async function createClassAction(formData: FormData): Promise<ActionResul
 export async function updateClassAction(formData: FormData): Promise<ActionResult> {
   const id = Number(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
-  const subject = String(formData.get("subject") ?? "").trim();
   const yearGroup = String(formData.get("yearGroup") ?? "").trim();
   const color = String(formData.get("color") ?? "#D94F26");
   const studentCount = clampInt(formData.get("studentCount"), 1, 60, 30);
@@ -42,7 +41,7 @@ export async function updateClassAction(formData: FormData): Promise<ActionResul
 
   mutate((db) => {
     db.classes = db.classes
-      .map((c) => (c.id === id ? { ...c, name, subject, yearGroup, studentCount, color } : c))
+      .map((c) => (c.id === id ? { ...c, name, subject: SUBJECT, yearGroup, studentCount, color } : c))
       .sort(byName);
   });
   return { ok: true, id };
