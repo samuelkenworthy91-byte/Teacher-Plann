@@ -53,9 +53,11 @@ export type PlanVM = {
 export function PlannerBoard({
   plans,
   today,
+  unavailableDates = [],
 }: {
   plans: PlanVM[];
   today: string;
+  unavailableDates?: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -236,6 +238,7 @@ export function PlannerBoard({
                           plannedHandbackDate={p.handbackDate}
                           totalBooks={p.totalBooks}
                           today={today}
+                          unavailableDates={unavailableDates}
                           label="Collected"
                           compact
                         />

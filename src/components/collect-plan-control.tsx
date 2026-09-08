@@ -13,6 +13,7 @@ export function CollectPlanControl({
   plannedHandbackDate,
   totalBooks,
   today,
+  unavailableDates = [],
   label = "Books collected",
   compact = false,
 }: {
@@ -21,6 +22,7 @@ export function CollectPlanControl({
   plannedHandbackDate: string;
   totalBooks: number;
   today: string;
+  unavailableDates?: string[];
   label?: string;
   compact?: boolean;
 }) {
@@ -33,7 +35,13 @@ export function CollectPlanControl({
   const [pending, startTransition] = useTransition();
 
   const effectiveDate = handbackDate < today ? today : handbackDate;
-  const pace = dailyRateFor(totalBooks, today, effectiveDate);
+  const unavailableDateSet = new Set(unavailableDates);
+  const pace = dailyRateFor(
+    totalBooks,
+    today,
+    effectiveDate,
+    unavailableDateSet,
+  );
 
   function openDialog() {
     setHandbackDate(plannedHandbackDate < today ? today : plannedHandbackDate);

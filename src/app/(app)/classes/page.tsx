@@ -12,10 +12,19 @@ export const dynamic = "force-dynamic";
 export default async function ClassesPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const { classes, slots, plans, settings, today } = await getBundle(user.id);
+  const { classes, slots, plans, unavailableDates, settings, today } =
+    await getBundle(user.id);
+  const unavailableDateSet = new Set(unavailableDates.map((day) => day.date));
 
   const vms: ClassVM[] = classes.map((c) => {
-    const h = computeClassHealth(c, slots, plans, settings, today);
+    const h = computeClassHealth(
+      c,
+      slots,
+      plans,
+      settings,
+      today,
+      unavailableDateSet,
+    );
     const next = plans
       .filter((p) => p.classId === c.id && p.status !== "returned")
       .sort((a, b) => a.collectDate.localeCompare(b.collectDate))[0];

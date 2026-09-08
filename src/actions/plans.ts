@@ -4,10 +4,17 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { classes, markingEntries, markingPlans } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
-import { clampInt, isValidDate, todayStr } from "@/lib/dates";
+import {
+  addSchoolDays,
+  clampInt,
+  isAvailableSchoolDay,
+  isValidDate,
+  todayStr,
+} from "@/lib/dates";
 import { dailyRateFor } from "@/lib/engine";
 import { hasStaleAutoPlans, rebuildAutoPlansForUser } from "@/lib/plan-sync";
-import { and, eq } from "drizzle-orm";
+import { getUnavailableDates } from "@/lib/queries";
+import { and, desc, eq } from "drizzle-orm";
 import type { ActionResult } from "@/actions/classes";
 
 async function ownPlan(userId: number, id: number) {
@@ -21,6 +28,11 @@ async function ownPlan(userId: number, id: number) {
 
 function refreshApp() {
   revalidatePath("/", "layout");
+}
+
+async function unavailableDateSet(userId: number): Promise<Set<string>> {
+  const dates = await getUnavailableDates(userId);
+  return new Set(dates.map((day) => day.date));
 }
 
 /* ------------------------------------------------------------------ */
@@ -99,8 +111,16 @@ export async function createTaskAction(
     return { ok: false, error: "Pick a valid hand-back date." };
 
   const today = todayStr();
+  const unavailableDates = await unavailableDateSet(user.id);
+  const collect = addSchoolDays(today, 0, unavailableDates);
   const total = totalOverride > 0 ? totalOverride : cls.studentCount;
-  const handback = deadline < today ? today : deadline;
+  const handback = deadline < collect ? collect : deadline;
+  if (unavailableDates.has(handback)) {
+    return {
+      ok: false,
+      error: "That hand-back date is protected. Pick a working day instead.",
+    };
+  }
 
   const [row] = await db
     .insert(markingPlans)
@@ -110,10 +130,10 @@ export async function createTaskAction(
       title,
       planType: "manual",
       status: "marking",
-      collectDate: today,
+      collectDate: collect,
       handbackDate: handback,
       totalBooks: total,
-      dailyRate: dailyRateFor(total, today, handback),
+      dailyRate: dailyRateFor(total, collect, handback, unavailableDates),
       locked: true,
     })
     .returning();
@@ -145,6 +165,14 @@ export async function collectPlanAction(
     return { ok: false, error: "This pile has already been collected." };
 
   const today = todayStr();
+  const unavailableDates = await unavailableDateSet(user.id);
+  if (!isAvailableSchoolDay(today, unavailableDates)) {
+    return {
+      ok: false,
+      error:
+        "Today is protected from work and marking. Choose the next working day.",
+    };
+  }
   const requestedHandback = handbackDate || plan.handbackDate;
   if (!isValidDate(requestedHandback))
     return { ok: false, error: "Pick a valid hand-back date." };
@@ -152,6 +180,12 @@ export async function collectPlanAction(
     return {
       ok: false,
       error: "The hand-back date cannot be before today’s collection.",
+    };
+  }
+  if (unavailableDates.has(requestedHandback)) {
+    return {
+      ok: false,
+      error: "That hand-back date is protected. Pick a working day instead.",
     };
   }
 
@@ -165,7 +199,12 @@ export async function collectPlanAction(
       collectPeriod: plan.collectDate === today ? plan.collectPeriod : null,
       handbackDate: requestedHandback,
       handbackPeriod: datesChanged ? null : plan.handbackPeriod,
-      dailyRate: dailyRateFor(plan.totalBooks, today, requestedHandback),
+      dailyRate: dailyRateFor(
+        plan.totalBooks,
+        today,
+        requestedHandback,
+        unavailableDates,
+      ),
       locked: true,
     })
     .where(eq(markingPlans.id, id));
@@ -185,13 +224,20 @@ export async function logBooksAction(
   if (!plan) return { ok: false, error: "Plan not found." };
   if (plan.status !== "marking")
     return { ok: false, error: "Collect the books first." };
+  if (!Number.isFinite(delta))
+    return { ok: false, error: "Enter a whole number of books." };
+
+  const today = todayStr();
+  const unavailableDates = await unavailableDateSet(user.id);
+  if (!isAvailableSchoolDay(today, unavailableDates)) {
+    return { ok: false, error: "Today is protected from marking." };
+  }
 
   const next = Math.max(
     0,
     Math.min(plan.totalBooks, plan.markedCount + Math.round(delta)),
   );
   const actualDelta = next - plan.markedCount;
-  const today = todayStr();
   if (actualDelta !== 0) {
     await db
       .insert(markingEntries)
@@ -205,6 +251,42 @@ export async function logBooksAction(
   return { ok: true };
 }
 
+/** Remove the whole most-recent marking input, including a mistaken bulk entry. */
+export async function undoLastMarkingAction(
+  id: number,
+): Promise<ActionResult & { undoneCount?: number }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const plan = await ownPlan(user.id, id);
+  if (!plan) return { ok: false, error: "Plan not found." };
+  if (plan.status !== "marking")
+    return { ok: false, error: "This pile is not open for marking." };
+
+  const [lastEntry] = await db
+    .select()
+    .from(markingEntries)
+    .where(
+      and(eq(markingEntries.planId, id), eq(markingEntries.userId, user.id)),
+    )
+    .orderBy(desc(markingEntries.createdAt), desc(markingEntries.id))
+    .limit(1);
+  if (!lastEntry)
+    return { ok: false, error: "There is no marking input to undo." };
+
+  const correctedCount = Math.max(
+    0,
+    Math.min(plan.totalBooks, plan.markedCount - lastEntry.count),
+  );
+  await db.delete(markingEntries).where(eq(markingEntries.id, lastEntry.id));
+  await db
+    .update(markingPlans)
+    .set({ markedCount: correctedCount })
+    .where(eq(markingPlans.id, id));
+
+  refreshApp();
+  return { ok: true, undoneCount: lastEntry.count };
+}
+
 /** Mark a pile as handed back today and make today the recorded hand-back date. */
 export async function returnPlanAction(id: number): Promise<ActionResult> {
   const user = await getCurrentUser();
@@ -215,6 +297,15 @@ export async function returnPlanAction(id: number): Promise<ActionResult> {
     return { ok: false, error: "Collect the books before handing them back." };
 
   const returnedToday = todayStr();
+  const unavailableDates = await unavailableDateSet(user.id);
+  if (!isAvailableSchoolDay(returnedToday, unavailableDates)) {
+    return {
+      ok: false,
+      error:
+        "Today is protected from work and marking. Hand the books back on a working day.",
+    };
+  }
+
   await db
     .update(markingPlans)
     .set({
@@ -306,6 +397,11 @@ export async function updatePlanAction(
   if (handbackDate < collectDate)
     return { ok: false, error: "Hand-back must be after collection." };
 
+  const unavailableDates = await unavailableDateSet(user.id);
+  if (unavailableDates.has(collectDate) || unavailableDates.has(handbackDate)) {
+    return { ok: false, error: "Choose dates outside your protected days." };
+  }
+
   const markedCount = Math.min(plan.markedCount, totalBooks);
   await db
     .update(markingPlans)
@@ -320,7 +416,12 @@ export async function updatePlanAction(
         handbackDate === plan.handbackDate ? plan.handbackPeriod : null,
       totalBooks,
       markedCount,
-      dailyRate: dailyRateFor(totalBooks, collectDate, handbackDate),
+      dailyRate: dailyRateFor(
+        totalBooks,
+        collectDate,
+        handbackDate,
+        unavailableDates,
+      ),
       locked: true,
     })
     .where(eq(markingPlans.id, id));

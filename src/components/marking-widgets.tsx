@@ -24,9 +24,11 @@ type ClassLite = {
 export function TaskCreator({
   classes,
   today,
+  unavailableDates = [],
 }: {
   classes: ClassLite[];
   today: string;
+  unavailableDates?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -41,7 +43,12 @@ export function TaskCreator({
     parseInt(total, 10) > 0 ? parseInt(total, 10) : (cls?.studentCount ?? 0);
   const pace =
     deadline && effectiveTotal > 0
-      ? dailyRateFor(effectiveTotal, today, deadline < today ? today : deadline)
+      ? dailyRateFor(
+          effectiveTotal,
+          today,
+          deadline < today ? today : deadline,
+          new Set(unavailableDates),
+        )
       : null;
 
   function submit(e: FormEvent) {

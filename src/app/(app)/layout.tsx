@@ -20,6 +20,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     plans: bundle.plans,
     entries: bundle.entries,
     settings: bundle.settings,
+    unavailableDates: bundle.unavailableDates.map((day) => day.date),
   });
   const activeCount = bundle.plans.filter((p) => p.status === "marking").length;
 

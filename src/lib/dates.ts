@@ -41,6 +41,16 @@ export const isWeekday = (s: string) => {
   return w >= 1 && w <= 5;
 };
 
+export const NO_UNAVAILABLE_DATES: ReadonlySet<string> = new Set();
+
+/** A weekday that has not been protected as a non-working/non-marking day. */
+export function isAvailableSchoolDay(
+  s: string,
+  unavailableDates: ReadonlySet<string> = NO_UNAVAILABLE_DATES,
+): boolean {
+  return isWeekday(s) && !unavailableDates.has(s);
+}
+
 export function addDays(s: string, n: number): string {
   return fmtDay(toDay(s) + n);
 }
@@ -113,31 +123,43 @@ export function prettyLong(s: string): string {
   return `${dayNames[d.getUTCDay()]} ${d.getUTCDate()} ${monthNames[d.getUTCMonth()]}`;
 }
 
-/** Count of Mon–Fri days between a and b, both ends inclusive. Min 1. */
-export function schoolDaysInclusive(a: string, b: string): number {
+/**
+ * Count available Mon–Fri marking days between a and b, both ends inclusive.
+ * Protected dates do not consume a teacher's marking capacity. The minimum of
+ * one keeps rate calculations safe for already-overdue dates.
+ */
+export function schoolDaysInclusive(
+  a: string,
+  b: string,
+  unavailableDates: ReadonlySet<string> = NO_UNAVAILABLE_DATES,
+): number {
   if (cmp(a, b) > 0) return 1;
   let n = 0;
   for (let d = toDay(a); d <= toDay(b); d++) {
-    const w = new Date(d * DAY_MS).getUTCDay();
-    if (w >= 1 && w <= 5) n++;
+    const current = fmtDay(d);
+    if (isAvailableSchoolDay(current, unavailableDates)) n++;
   }
   return Math.max(1, n);
 }
 
-/** Move n school days (Mon–Fri). Negative n moves backwards. */
-export function addSchoolDays(s: string, n: number): string {
+/**
+ * Move n available school days. Weekends and protected non-working days are
+ * skipped; negative n moves backwards. With n = 0 this returns the first
+ * available school day on or after the supplied date.
+ */
+export function addSchoolDays(
+  s: string,
+  n: number,
+  unavailableDates: ReadonlySet<string> = NO_UNAVAILABLE_DATES,
+): string {
   let d = toDay(s);
-  let w = new Date(d * DAY_MS).getUTCDay();
-  while (w === 0 || w === 6) {
-    d += n < 0 ? -1 : 1;
-    w = new Date(d * DAY_MS).getUTCDay();
-  }
-  let remaining = Math.abs(n);
   const step = n < 0 ? -1 : 1;
+  while (!isAvailableSchoolDay(fmtDay(d), unavailableDates)) d += step;
+
+  let remaining = Math.abs(n);
   while (remaining > 0) {
     d += step;
-    w = new Date(d * DAY_MS).getUTCDay();
-    if (w >= 1 && w <= 5) remaining--;
+    if (isAvailableSchoolDay(fmtDay(d), unavailableDates)) remaining--;
   }
   return fmtDay(d);
 }

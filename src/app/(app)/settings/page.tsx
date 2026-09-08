@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { CalendarRange, Layers, Repeat2, Timer } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
-import { getSettings } from "@/lib/queries";
+import { todayStr } from "@/lib/dates";
+import { getSettings, getUnavailableDates } from "@/lib/queries";
 import { SettingsForm } from "@/components/settings-form";
+import { ProtectedDaysManager } from "@/components/protected-days-manager";
 
 export const metadata: Metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -11,7 +13,11 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const settings = await getSettings(user.id);
+  const [settings, unavailableDates] = await Promise.all([
+    getSettings(user.id),
+    getUnavailableDates(user.id),
+  ]);
+  const today = todayStr();
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -23,8 +29,8 @@ export default async function SettingsPage() {
           Settings
         </h1>
         <p className="mt-1 max-w-lg text-[0.88rem] text-ink-soft">
-          These four numbers drive the entire scheduler. Change them, then
-          regenerate the plan.
+          These rules and protected days drive the entire scheduler. Changes
+          refresh every unlocked future task automatically.
         </p>
       </header>
 
@@ -82,6 +88,15 @@ export default async function SettingsPage() {
           />
         </div>
       </div>
+
+      <ProtectedDaysManager
+        today={today}
+        days={unavailableDates.map((day) => ({
+          id: day.id,
+          date: day.date,
+          reason: day.reason,
+        }))}
+      />
     </div>
   );
 }

@@ -16,11 +16,11 @@ import { getBundle } from "@/lib/queries";
 import { computeClassHealth, requiredToday } from "@/lib/engine";
 import {
   addDays,
+  isAvailableSchoolDay,
   pretty,
   prettyShort,
   schoolDaysInclusive,
   startOfWeek,
-  todayStr,
   WEEKDAY_SHORT,
 } from "@/lib/dates";
 import { Dot, EmptyState, styleDelay } from "@/components/ui";
@@ -33,9 +33,10 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const { classes, slots, plans, entries, settings, today } = await getBundle(
-    user.id,
-  );
+  const { classes, slots, plans, entries, unavailableDates, settings, today } =
+    await getBundle(user.id);
+  const unavailableDateSet = new Set(unavailableDates.map((day) => day.date));
+  const isProtectedToday = !isAvailableSchoolDay(today, unavailableDateSet);
 
   /* ---------- onboarding ---------- */
   if (classes.length === 0) {
@@ -108,7 +109,10 @@ export default async function DashboardPage() {
     (p) => p.status === "marking" && p.totalBooks - p.markedCount > 0,
   );
   const collectDue = plans
-    .filter((p) => p.status === "scheduled" && p.collectDate <= today)
+    .filter(
+      (p) =>
+        p.status === "scheduled" && p.collectDate <= today && !isProtectedToday,
+    )
     .sort((a, b) => a.collectDate.localeCompare(b.collectDate));
 
   const focus = marking[0] ?? null;
@@ -124,7 +128,7 @@ export default async function DashboardPage() {
     a.handbackDate.localeCompare(b.handbackDate),
   )[0];
   const health = classes.map((c) =>
-    computeClassHealth(c, slots, plans, settings, today),
+    computeClassHealth(c, slots, plans, settings, today, unavailableDateSet),
   );
   const onTrack = health.filter(
     (h) => h.status === "fresh" || h.status === "ok",
@@ -219,8 +223,13 @@ export default async function DashboardPage() {
             handbackLabel={pretty(focus.handbackDate)}
             totalBooks={focus.totalBooks}
             markedCount={focus.markedCount}
-            requiredNow={requiredToday(focus, today)}
-            daysLeft={schoolDaysInclusive(today, focus.handbackDate)}
+            requiredNow={requiredToday(focus, today, unavailableDateSet)}
+            daysLeft={schoolDaysInclusive(
+              today,
+              focus.handbackDate,
+              unavailableDateSet,
+            )}
+            isProtectedToday={isProtectedToday}
             doneToday={entries
               .filter((e) => e.planId === focus.id && e.date === today)
               .reduce((s, e) => s + e.count, 0)}
@@ -228,6 +237,7 @@ export default async function DashboardPage() {
         ) : collectDue.length > 0 ? (
           <CollectHero
             today={today}
+            unavailableDates={unavailableDates.map((day) => day.date)}
             items={collectDue.map((p) => ({
               planId: p.id,
               className: classById.get(p.classId)?.name ?? "?",

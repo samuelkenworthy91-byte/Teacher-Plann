@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 export default async function PlannerPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const { classes, slots, plans, settings, today } = await getBundle(user.id);
+  const { classes, slots, plans, unavailableDates, settings, today } =
+    await getBundle(user.id);
 
   if (classes.length === 0 || slots.length === 0) {
     return (
@@ -162,7 +163,11 @@ export default async function PlannerPage() {
       </section>
 
       {/* The diary */}
-      <PlannerBoard plans={vms} today={today} />
+      <PlannerBoard
+        plans={vms}
+        today={today}
+        unavailableDates={unavailableDates.map((day) => day.date)}
+      />
     </div>
   );
 }

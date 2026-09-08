@@ -4,6 +4,7 @@ import {
   classes,
   markingPlans,
   timetableSlots,
+  unavailableDates,
   type PlanRow,
 } from "@/db/schema";
 import { todayStr } from "@/lib/dates";
@@ -24,12 +25,17 @@ export async function rebuildAutoPlansForUser(
   userId: number,
   today = todayStr(),
 ): Promise<PlanRebuildResult> {
-  const [classRows, slotRows, existingPlans, settings] = await Promise.all([
-    db.select().from(classes).where(eq(classes.userId, userId)),
-    db.select().from(timetableSlots).where(eq(timetableSlots.userId, userId)),
-    db.select().from(markingPlans).where(eq(markingPlans.userId, userId)),
-    getSettings(userId),
-  ]);
+  const [classRows, slotRows, existingPlans, settings, unavailableRows] =
+    await Promise.all([
+      db.select().from(classes).where(eq(classes.userId, userId)),
+      db.select().from(timetableSlots).where(eq(timetableSlots.userId, userId)),
+      db.select().from(markingPlans).where(eq(markingPlans.userId, userId)),
+      getSettings(userId),
+      db
+        .select()
+        .from(unavailableDates)
+        .where(eq(unavailableDates.userId, userId)),
+    ]);
 
   // Keep the existing diary intact until the planner has enough information
   // to make useful replacements.
@@ -42,6 +48,7 @@ export async function rebuildAutoPlansForUser(
     plans: existingPlans,
     settings,
     today,
+    unavailableDates: unavailableRows.map((row) => row.date),
   });
 
   await db

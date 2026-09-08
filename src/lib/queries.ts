@@ -5,12 +5,14 @@ import {
   markingPlans,
   timetablePhotos,
   timetableSlots,
+  unavailableDates,
   userSettings,
   type ClassRow,
   type EntryRow,
   type PlanRow,
   type SettingsRow,
   type SlotRow,
+  type UnavailableDateRow,
 } from "@/db/schema";
 import { addDays, todayStr } from "@/lib/dates";
 import { eq, desc, gte } from "drizzle-orm";
@@ -38,11 +40,22 @@ export async function getSettings(userId: number): Promise<SettingsRow> {
   );
 }
 
+export async function getUnavailableDates(
+  userId: number,
+): Promise<UnavailableDateRow[]> {
+  return db
+    .select()
+    .from(unavailableDates)
+    .where(eq(unavailableDates.userId, userId))
+    .orderBy(unavailableDates.date);
+}
+
 export type Bundle = {
   classes: ClassRow[];
   slots: SlotRow[];
   plans: PlanRow[];
   entries: EntryRow[];
+  unavailableDates: UnavailableDateRow[];
   settings: SettingsRow;
   photo: string | null;
   today: string;
@@ -50,30 +63,32 @@ export type Bundle = {
 
 export async function getBundle(userId: number): Promise<Bundle> {
   const today = todayStr();
-  const [cls, slt, pln, ent, settings, photoRows] = await Promise.all([
-    db
-      .select()
-      .from(classes)
-      .where(eq(classes.userId, userId))
-      .orderBy(classes.name),
-    db.select().from(timetableSlots).where(eq(timetableSlots.userId, userId)),
-    db
-      .select()
-      .from(markingPlans)
-      .where(eq(markingPlans.userId, userId))
-      .orderBy(desc(markingPlans.collectDate)),
-    db
-      .select()
-      .from(markingEntries)
-      .where(gte(markingEntries.date, addDays(today, -120)))
-      .orderBy(desc(markingEntries.date)),
-    getSettings(userId),
-    db
-      .select()
-      .from(timetablePhotos)
-      .where(eq(timetablePhotos.userId, userId))
-      .limit(1),
-  ]);
+  const [cls, slt, pln, ent, unavailable, settings, photoRows] =
+    await Promise.all([
+      db
+        .select()
+        .from(classes)
+        .where(eq(classes.userId, userId))
+        .orderBy(classes.name),
+      db.select().from(timetableSlots).where(eq(timetableSlots.userId, userId)),
+      db
+        .select()
+        .from(markingPlans)
+        .where(eq(markingPlans.userId, userId))
+        .orderBy(desc(markingPlans.collectDate)),
+      db
+        .select()
+        .from(markingEntries)
+        .where(gte(markingEntries.date, addDays(today, -120)))
+        .orderBy(desc(markingEntries.date)),
+      getUnavailableDates(userId),
+      getSettings(userId),
+      db
+        .select()
+        .from(timetablePhotos)
+        .where(eq(timetablePhotos.userId, userId))
+        .limit(1),
+    ]);
   // entries are per-user filtered via plan ownership join cost; filter here instead:
   const planIds = new Set(pln.map((p) => p.id));
   const entries = ent.filter(
@@ -84,6 +99,7 @@ export async function getBundle(userId: number): Promise<Bundle> {
     slots: slt,
     plans: pln,
     entries,
+    unavailableDates: unavailable,
     settings,
     photo: photoRows[0]?.dataUrl ?? null,
     today,

@@ -5,7 +5,12 @@ import { Archive, ArrowDownToLine, History, PenLine } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { getBundle } from "@/lib/queries";
 import { requiredToday } from "@/lib/engine";
-import { pretty, prettyShort, schoolDaysInclusive } from "@/lib/dates";
+import {
+  isAvailableSchoolDay,
+  pretty,
+  prettyShort,
+  schoolDaysInclusive,
+} from "@/lib/dates";
 import { Dot, EmptyState } from "@/components/ui";
 import { FocusPanel } from "@/components/dashboard-widgets";
 import { RowActions, TaskCreator } from "@/components/marking-widgets";
@@ -16,7 +21,10 @@ export const dynamic = "force-dynamic";
 export default async function MarkingPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const { classes, plans, entries, today } = await getBundle(user.id);
+  const { classes, plans, entries, unavailableDates, today } = await getBundle(
+    user.id,
+  );
+  const unavailableDateSet = new Set(unavailableDates.map((day) => day.date));
 
   const classById = new Map(classes.map((c) => [c.id, c]));
   const desk = plans
@@ -53,6 +61,7 @@ export default async function MarkingPage() {
             studentCount: c.studentCount,
           }))}
           today={today}
+          unavailableDates={unavailableDates.map((day) => day.date)}
         />
       </header>
 
@@ -88,8 +97,15 @@ export default async function MarkingPage() {
                   handbackLabel={pretty(p.handbackDate)}
                   totalBooks={p.totalBooks}
                   markedCount={p.markedCount}
-                  requiredNow={requiredToday(p, today)}
-                  daysLeft={schoolDaysInclusive(today, p.handbackDate)}
+                  requiredNow={requiredToday(p, today, unavailableDateSet)}
+                  daysLeft={schoolDaysInclusive(
+                    today,
+                    p.handbackDate,
+                    unavailableDateSet,
+                  )}
+                  isProtectedToday={
+                    !isAvailableSchoolDay(today, unavailableDateSet)
+                  }
                   doneToday={entries
                     .filter((e) => e.planId === p.id && e.date === today)
                     .reduce((s, e) => s + e.count, 0)}

@@ -9,11 +9,13 @@ import {
   PartyPopper,
   Plus,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import {
   deletePlanAction,
   logBooksAction,
   returnPlanAction,
+  undoLastMarkingAction,
 } from "@/actions/plans";
 import { CollectPlanControl } from "@/components/collect-plan-control";
 import { Dot, ProgressRing, Spinner } from "@/components/ui";
@@ -33,6 +35,7 @@ export function FocusPanel(props: {
   requiredNow: number;
   doneToday: number;
   daysLeft: number;
+  isProtectedToday?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -56,7 +59,7 @@ export function FocusPanel(props: {
   const onPace = needMoreToday === 0;
 
   const log = (delta: number) => {
-    if (delta === 0) return;
+    if (delta === 0 || props.isProtectedToday) return;
     setActionError(null);
     startTransition(async () => {
       bump(delta);
@@ -67,6 +70,18 @@ export function FocusPanel(props: {
       }
     });
   };
+
+  function undoLastInput() {
+    setActionError(null);
+    startTransition(async () => {
+      const result = await undoLastMarkingAction(props.planId);
+      if (!result.ok) {
+        setActionError(result.error ?? "Could not undo the last input.");
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   function handBack() {
     setActionError(null);
@@ -173,12 +188,18 @@ export function FocusPanel(props: {
                   : "!border-0 !bg-pen-soft !text-pen"
               }`}
             >
-              {onPace ? "Today's pace hit" : `Mark ${needMoreToday}+ today`}
+              {props.isProtectedToday
+                ? "Protected day"
+                : onPace
+                  ? "Today's pace hit"
+                  : `Mark ${needMoreToday}+ today`}
             </span>
           </div>
 
           <p className="mt-3 font-display text-[1.55rem] font-semibold leading-tight text-ink">
-            {needMoreToday > 0 ? (
+            {props.isProtectedToday ? (
+              <>No marking scheduled today.</>
+            ) : needMoreToday > 0 ? (
               <>
                 Mark at least{" "}
                 <span className="squiggle">
@@ -191,10 +212,17 @@ export function FocusPanel(props: {
             )}
           </p>
           <p className="mt-1.5 text-[0.82rem] leading-relaxed text-ink-soft">
-            Hands back on{" "}
-            <strong className="text-ink">{props.handbackLabel}</strong> ·{" "}
-            {props.daysLeft} marking day{props.daysLeft === 1 ? "" : "s"} left ·
-            pace ≈ {props.requiredNow}/day · {loggedToday} logged today.
+            {props.isProtectedToday ? (
+              <>This protected day is excluded from your marking pace.</>
+            ) : (
+              <>
+                Hands back on{" "}
+                <strong className="text-ink">{props.handbackLabel}</strong> ·{" "}
+                {props.daysLeft} marking day{props.daysLeft === 1 ? "" : "s"}{" "}
+                left · pace ≈ {props.requiredNow}/day · {loggedToday} logged
+                today.
+              </>
+            )}
           </p>
 
           <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -202,7 +230,11 @@ export function FocusPanel(props: {
               <button
                 key={count}
                 type="button"
-                disabled={pending || marked >= props.totalBooks}
+                disabled={
+                  pending ||
+                  props.isProtectedToday ||
+                  marked >= props.totalBooks
+                }
                 onClick={() => log(count)}
                 className="btn btn-ink"
               >
@@ -211,12 +243,21 @@ export function FocusPanel(props: {
             ))}
             <button
               type="button"
-              disabled={pending || marked <= 0}
+              disabled={pending || props.isProtectedToday || marked <= 0}
               onClick={() => log(-1)}
               className="btn btn-ghost"
               title="Undo one"
             >
               <Minus size={13} />
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={undoLastInput}
+              className="btn btn-ghost"
+              title="Remove the full most recent marking input, including a bulk entry"
+            >
+              <Undo2 size={13} /> Undo last input
             </button>
             <form
               className="flex items-center gap-1.5"
@@ -241,7 +282,7 @@ export function FocusPanel(props: {
               <button
                 type="submit"
                 className="btn btn-ghost"
-                disabled={pending || !custom}
+                disabled={pending || props.isProtectedToday || !custom}
               >
                 Log
               </button>
@@ -339,6 +380,7 @@ export function FocusPanel(props: {
 export function CollectHero({
   items,
   today,
+  unavailableDates = [],
 }: {
   items: {
     planId: number;
@@ -350,6 +392,7 @@ export function CollectHero({
     handbackLabel: string;
   }[];
   today: string;
+  unavailableDates?: string[];
 }) {
   return (
     <div className="space-y-3">
@@ -380,6 +423,7 @@ export function CollectHero({
             plannedHandbackDate={item.handbackDate}
             totalBooks={item.totalBooks}
             today={today}
+            unavailableDates={unavailableDates}
           />
         </div>
       ))}

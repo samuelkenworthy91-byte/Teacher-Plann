@@ -125,6 +125,25 @@ export const markingPlans = pgTable(
   ],
 );
 
+// Specific weekdays when the teacher is not at work or has protected from marking.
+// Weekends are already excluded by the scheduler; this table is for exceptions.
+export const unavailableDates = pgTable(
+  "unavailable_dates",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    date: date("date", { mode: "string" }).notNull(),
+    reason: text("reason").notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("unavailable_dates_user_date_idx").on(t.userId, t.date),
+    index("unavailable_dates_user_idx").on(t.userId),
+  ],
+);
+
 export const markingEntries = pgTable(
   "marking_entries",
   {
@@ -158,5 +177,6 @@ export type User = typeof users.$inferSelect;
 export type ClassRow = typeof classes.$inferSelect;
 export type SlotRow = typeof timetableSlots.$inferSelect;
 export type PlanRow = typeof markingPlans.$inferSelect;
+export type UnavailableDateRow = typeof unavailableDates.$inferSelect;
 export type EntryRow = typeof markingEntries.$inferSelect;
 export type SettingsRow = typeof userSettings.$inferSelect;
