@@ -1,8 +1,20 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import { ArrowDownToLine, CheckCheck, Minus, PartyPopper, Plus } from "lucide-react";
-import { collectPlanAction, logBooksAction, returnPlanAction } from "@/actions/plans";
+import {
+  ArrowDownToLine,
+  CheckCheck,
+  Minus,
+  PartyPopper,
+  Plus,
+  Undo2,
+} from "lucide-react";
+import {
+  collectPlanAction,
+  logBooksAction,
+  returnPlanAction,
+  undoLastMarkingAction,
+} from "@/actions/plans";
 import { Dot, ProgressRing, Spinner } from "@/components/ui";
 
 /* ------------------------------------------------------------------ */
@@ -20,10 +32,12 @@ export function FocusPanel(props: {
   requiredNow: number;
   doneToday: number;
   daysLeft: number;
+  isProtectedToday?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [confirmReturn, setConfirmReturn] = useState(false);
   const [custom, setCustom] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const [{ marked, loggedToday }, bump] = useOptimistic(
     { marked: props.markedCount, loggedToday: props.doneToday },
@@ -40,10 +54,20 @@ export function FocusPanel(props: {
   const onPace = needMoreToday === 0;
 
   const log = (delta: number) => {
-    if (delta === 0) return;
+    if (delta === 0 || props.isProtectedToday) return;
+    setActionError(null);
     startTransition(async () => {
       bump(delta);
-      await logBooksAction(props.planId, delta);
+      const result = await logBooksAction(props.planId, delta);
+      if (!result.ok) setActionError(result.error ?? "Could not log those books.");
+    });
+  };
+
+  const undoLastInput = () => {
+    setActionError(null);
+    startTransition(async () => {
+      const result = await undoLastMarkingAction(props.planId);
+      if (!result.ok) setActionError(result.error ?? "Could not undo the last input.");
     });
   };
 
@@ -58,7 +82,7 @@ export function FocusPanel(props: {
             {props.className} handed back — cycle complete
           </p>
           <p className="mt-1 text-sm text-ink-soft">
-            The clock resets. {props.className}'s next formative will be scheduled inside your 4–8
+            The clock resets. {props.className}&apos;s next formative will be scheduled inside your
             lesson window.
           </p>
         </div>
@@ -72,7 +96,6 @@ export function FocusPanel(props: {
       style={{ background: `linear-gradient(135deg, ${props.color}14, #fffdf8 45%)` }}
     >
       <div className="grid gap-6 p-6 sm:p-7 md:grid-cols-[auto_1fr]">
-        {/* Ring */}
         <div className="flex items-center justify-center">
           <ProgressRing size={150} stroke={13} progress={progress} color={props.color}>
             <div className="text-center">
@@ -84,23 +107,31 @@ export function FocusPanel(props: {
           </ProgressRing>
         </div>
 
-        {/* Body */}
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className="chip !border-0 text-white"
-              style={{ background: props.color }}
-            >
+            <span className="chip !border-0 text-white" style={{ background: props.color }}>
               {props.className}
             </span>
             <span className="chip">{props.title}</span>
-            <span className={`chip ${onPace ? "!bg-good-soft !text-good !border-0" : "!bg-pen-soft !text-pen !border-0"}`}>
-              {onPace ? "Today's pace hit" : `Mark ${needMoreToday}+ today`}
+            <span
+              className={`chip ${
+                onPace
+                  ? "!border-0 !bg-good-soft !text-good"
+                  : "!border-0 !bg-pen-soft !text-pen"
+              }`}
+            >
+              {props.isProtectedToday
+                ? "Protected day"
+                : onPace
+                  ? "Today's pace hit"
+                  : `Mark ${needMoreToday}+ today`}
             </span>
           </div>
 
           <p className="mt-3 font-display text-[1.55rem] font-semibold leading-tight text-ink">
-            {needMoreToday > 0 ? (
+            {props.isProtectedToday ? (
+              <>No marking scheduled today.</>
+            ) : needMoreToday > 0 ? (
               <>
                 Mark at least{" "}
                 <span className="squiggle">
@@ -113,18 +144,23 @@ export function FocusPanel(props: {
             )}
           </p>
           <p className="mt-1.5 text-[0.82rem] leading-relaxed text-ink-soft">
-            Hands back on <strong className="text-ink">{props.handbackLabel}</strong> ·{" "}
-            {props.daysLeft} marking day{props.daysLeft === 1 ? "" : "s"} left · pace ≈{" "}
-            {props.requiredNow}/day · {loggedToday} logged today.
+            {props.isProtectedToday ? (
+              <>This protected day is excluded from your marking pace.</>
+            ) : (
+              <>
+                Hands back on <strong className="text-ink">{props.handbackLabel}</strong> ·{" "}
+                {props.daysLeft} marking day{props.daysLeft === 1 ? "" : "s"} left · pace ≈{" "}
+                {props.requiredNow}/day · {loggedToday} logged today.
+              </>
+            )}
           </p>
 
-          {/* Log controls */}
           <div className="mt-5 flex flex-wrap items-center gap-2">
             {[1, 5, 10].map((n) => (
               <button
                 key={n}
                 type="button"
-                disabled={pending || marked >= props.totalBooks}
+                disabled={pending || props.isProtectedToday || marked >= props.totalBooks}
                 onClick={() => log(n)}
                 className="btn btn-ink"
               >
@@ -133,12 +169,21 @@ export function FocusPanel(props: {
             ))}
             <button
               type="button"
-              disabled={pending || marked <= 0}
+              disabled={pending || props.isProtectedToday || marked <= 0}
               onClick={() => log(-1)}
               className="btn btn-ghost"
               title="Undo one"
             >
               <Minus size={13} />
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={undoLastInput}
+              className="btn btn-ghost"
+              title="Remove the full most recent marking input, including a bulk entry"
+            >
+              <Undo2 size={13} /> Undo last input
             </button>
             <form
               className="flex items-center gap-1.5"
@@ -158,16 +203,22 @@ export function FocusPanel(props: {
                 className="input !w-16 !px-2 text-center"
                 inputMode="numeric"
               />
-              <button type="submit" className="btn btn-ghost" disabled={pending || !custom}>
+              <button
+                type="submit"
+                className="btn btn-ghost"
+                disabled={pending || props.isProtectedToday || !custom}
+              >
                 Log
               </button>
             </form>
             {pending ? <Spinner className="text-ink-faint" /> : null}
           </div>
+          {actionError ? (
+            <p className="mt-2 text-[0.76rem] font-medium text-bad">{actionError}</p>
+          ) : null}
         </div>
       </div>
 
-      {/* Footer: hand back */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-white/60 px-6 py-3.5 sm:px-7">
         <p className="text-[0.75rem] text-ink-soft">
           {props.totalBooks - marked === 0
@@ -180,11 +231,16 @@ export function FocusPanel(props: {
             <button
               type="button"
               className="btn btn-pen"
-              disabled={pending}
+              disabled={pending || props.isProtectedToday}
               onClick={() =>
                 startTransition(async () => {
+                  setActionError(null);
+                  const result = await returnPlanAction(props.planId);
+                  if (!result.ok) {
+                    setActionError(result.error ?? "Could not record the hand-back.");
+                    return;
+                  }
                   setReturned(true);
-                  await returnPlanAction(props.planId);
                 })
               }
             >
@@ -195,7 +251,12 @@ export function FocusPanel(props: {
             </button>
           </span>
         ) : (
-          <button type="button" className="btn btn-ghost" onClick={() => setConfirmReturn(true)}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={props.isProtectedToday}
+            onClick={() => setConfirmReturn(true)}
+          >
             <CheckCheck size={14} /> Mark as handed back
           </button>
         )}
@@ -225,9 +286,11 @@ export function CollectHero({
     {},
     (state, id) => ({ ...state, [id]: true }),
   );
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <div className="space-y-3">
+      {error ? <p className="rounded-xl bg-bad-soft px-4 py-3 text-sm font-medium text-bad">{error}</p> : null}
       {items.map((it) =>
         collected[it.planId] ? null : (
           <div key={it.planId} className="card pop flex flex-wrap items-center gap-4 p-5 sm:p-6">
@@ -239,7 +302,7 @@ export function CollectHero({
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-display text-[1.25rem] font-semibold leading-snug text-ink">
-                Collect {it.className}'s books today{it.period ? ` — Period ${it.period}` : ""}
+                Collect {it.className}&apos;s books today{it.period ? ` — Period ${it.period}` : ""}
               </p>
               <p className="mt-0.5 text-[0.82rem] text-ink-soft">
                 Then mark ≈ <strong className="text-ink">{it.dailyRate}/day</strong> and hand them
@@ -252,8 +315,10 @@ export function CollectHero({
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
+                  setError(null);
                   markCollected(it.planId);
-                  await collectPlanAction(it.planId);
+                  const result = await collectPlanAction(it.planId);
+                  if (!result.ok) setError(result.error ?? "Could not collect those books.");
                 })
               }
             >
