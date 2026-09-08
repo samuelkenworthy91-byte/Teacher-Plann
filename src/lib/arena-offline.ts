@@ -18,13 +18,24 @@ export type DeferResult = {
   dailyRate: number;
 };
 
+function unavailableSet(dates: string[] = []) {
+  return new Set(dates);
+}
+
 /** First lesson of a class strictly after a date. */
 export function nextLessonAfter(
   classId: number,
   slots: SlotRow[],
   date: string,
+  unavailableDates: string[] = [],
 ): { date: string; period: number } | null {
-  return firstLessonOnOrAfter(classId, slots, addDays(date, 1));
+  return firstLessonOnOrAfter(
+    classId,
+    slots,
+    addDays(date, 1),
+    40,
+    unavailableSet(unavailableDates),
+  );
 }
 
 /**
@@ -38,9 +49,11 @@ export function generateArenaSchedule(args: {
   plans: PlanRow[];
   settings: SettingsRow;
   today: string;
+  unavailableDates?: string[];
 }): Suggestion[] {
   const base = generateSchedule(args);
   const classesById = new Map(args.classes.map((c) => [c.id, c]));
+  const blocked = unavailableSet(args.unavailableDates ?? []);
 
   return base.map((suggestion) => {
     if (!suggestion.late || suggestion.collectDate <= suggestion.dueBy) return suggestion;
@@ -48,7 +61,13 @@ export function generateArenaSchedule(args: {
     if (!cls) return suggestion;
 
     const last = lastFeedbackDate(cls.id, args.plans, classesById);
-    const future = lessonsFor(cls.id, args.slots, addDays(last, 1), addDays(last, 120));
+    const future = lessonsFor(
+      cls.id,
+      args.slots,
+      addDays(last, 1),
+      addDays(last, 120),
+      blocked,
+    );
     const earliest =
       future[args.settings.minLessons - 1]?.date ??
       addDays(last, Math.max(2, args.settings.minLessons));
@@ -57,17 +76,29 @@ export function generateArenaSchedule(args: {
       addDays(last, args.settings.maxGapDays);
     const latest = minDate(addDays(last, args.settings.maxGapDays), latestByLessons);
     const startFrom = maxDate(earliest, args.today);
-    const legal = lessonsFor(cls.id, args.slots, startFrom, maxDate(latest, startFrom))[0];
+    const legal = lessonsFor(
+      cls.id,
+      args.slots,
+      startFrom,
+      maxDate(latest, startFrom),
+      blocked,
+    )[0];
     if (!legal || legal.date >= suggestion.collectDate) return suggestion;
 
-    const hb = computeHandback(cls.id, args.slots, legal, args.settings.windowDays);
+    const hb = computeHandback(
+      cls.id,
+      args.slots,
+      legal,
+      args.settings.windowDays,
+      blocked,
+    );
     return {
       ...suggestion,
       collectDate: legal.date,
       collectPeriod: legal.period,
       handbackDate: hb.date,
       handbackPeriod: hb.period,
-      dailyRate: dailyRateFor(cls.studentCount, legal.date, hb.date),
+      dailyRate: dailyRateFor(cls.studentCount, legal.date, hb.date, blocked),
       late: true,
       dueBy: latest,
     };
@@ -81,20 +112,32 @@ export function computeDeferCollect(args: {
   settings: SettingsRow;
   today: string;
   studentCount: number;
+  unavailableDates?: string[];
 }): DeferResult {
   const { plan, slots, settings, today, studentCount } = args;
-  const lesson = nextLessonAfter(plan.classId, slots, today);
+  const blocked = unavailableSet(args.unavailableDates ?? []);
+  const lesson = nextLessonAfter(
+    plan.classId,
+    slots,
+    today,
+    args.unavailableDates ?? [],
+  );
   const collect = lesson ?? {
-    date: addSchoolDays(today, 1),
+    date: addSchoolDays(today, 1, blocked),
     period: plan.collectPeriod ?? 1,
   };
-  const hb = computeHandback(plan.classId, slots, collect, settings.windowDays);
+  const hb = computeHandback(plan.classId, slots, collect, settings.windowDays, blocked);
   return {
     collectDate: collect.date,
     collectPeriod: collect.period,
     handbackDate: hb.date,
     handbackPeriod: hb.period,
-    dailyRate: dailyRateFor(plan.totalBooks || studentCount, collect.date, hb.date),
+    dailyRate: dailyRateFor(
+      plan.totalBooks || studentCount,
+      collect.date,
+      hb.date,
+      blocked,
+    ),
   };
 }
 
@@ -103,12 +146,19 @@ export function computeDeferHandback(args: {
   plan: PlanRow;
   slots: SlotRow[];
   today: string;
+  unavailableDates?: string[];
 }): DeferResult {
   const { plan, slots, today } = args;
+  const blocked = unavailableSet(args.unavailableDates ?? []);
   const base = maxDate(today, plan.handbackDate);
-  const lesson = nextLessonAfter(plan.classId, slots, base);
+  const lesson = nextLessonAfter(
+    plan.classId,
+    slots,
+    base,
+    args.unavailableDates ?? [],
+  );
   const hb = lesson ?? {
-    date: addSchoolDays(base, 2),
+    date: addSchoolDays(base, 2, blocked),
     period: plan.handbackPeriod ?? 1,
   };
   const remaining = Math.max(1, plan.totalBooks - plan.markedCount);
@@ -117,7 +167,12 @@ export function computeDeferHandback(args: {
     collectPeriod: plan.collectPeriod ?? 1,
     handbackDate: hb.date,
     handbackPeriod: hb.period,
-    dailyRate: dailyRateFor(remaining, maxDate(today, plan.collectDate), hb.date),
+    dailyRate: dailyRateFor(
+      remaining,
+      maxDate(today, plan.collectDate),
+      hb.date,
+      blocked,
+    ),
   };
 }
 
@@ -127,21 +182,28 @@ export function suggestAdhocHandback(args: {
   slots: SlotRow[];
   settings: SettingsRow;
   today: string;
+  unavailableDates?: string[];
 }): { date: string; period: number | null } {
   const { classId, slots, settings, today } = args;
-  const windowEnd = addSchoolDays(today, Math.max(0, settings.windowDays - 1));
-  const lesson = firstLessonOnOrAfter(classId, slots, windowEnd, 35);
+  const blocked = unavailableSet(args.unavailableDates ?? []);
+  const windowEnd = addSchoolDays(
+    today,
+    Math.max(0, settings.windowDays - 1),
+    blocked,
+  );
+  const lesson = firstLessonOnOrAfter(classId, slots, windowEnd, 35, blocked);
   return {
-    date: lesson?.date ?? addSchoolDays(today, settings.windowDays),
+    date: lesson?.date ?? addSchoolDays(today, settings.windowDays, blocked),
     period: lesson?.period ?? null,
   };
 }
 
-/** Lesson of this class today, if one exists. */
+/** Lesson of this class today, if one exists and today is not protected. */
 export function lessonToday(
   classId: number,
   slots: SlotRow[],
   today: string,
+  unavailableDates: string[] = [],
 ): { date: string; period: number } | null {
-  return lessonsFor(classId, slots, today, today)[0] ?? null;
+  return lessonsFor(classId, slots, today, today, unavailableSet(unavailableDates))[0] ?? null;
 }
