@@ -57,6 +57,13 @@ export type EntryRow = {
   createdAt: string;
 };
 
+export type UnavailableDateRow = {
+  id: number;
+  date: string;
+  reason: string;
+  createdAt: string;
+};
+
 export type SettingsRow = {
   /** Give feedback after at least this many lessons seen… */
   minLessons: number;
@@ -82,6 +89,7 @@ export type Database = {
   slots: SlotRow[];
   plans: PlanRow[];
   entries: EntryRow[];
+  unavailableDates: UnavailableDateRow[];
   photo: string | null;
 };
 
