@@ -8,6 +8,18 @@ export function toDay(s: string): number {
   return Math.floor(Date.UTC(y, m - 1, d) / DAY_MS);
 }
 
+/** True only for a real ISO calendar day, not merely a date-shaped string. */
+export function isValidDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [year, month, day] = s.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 export function fmtDay(n: number): string {
   return new Date(n * DAY_MS).toISOString().slice(0, 10);
 }
