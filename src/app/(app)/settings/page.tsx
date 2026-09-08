@@ -2,13 +2,14 @@
 
 import { CalendarRange, Layers, Repeat2, Timer } from "lucide-react";
 import { SettingsForm } from "@/components/settings-form";
+import { ProtectedDaysManager } from "@/components/protected-days-manager";
 import { DataManager } from "@/components/data-manager";
 import { useBundle } from "@/lib/store";
 
 export default function SettingsPage() {
   const bundle = useBundle();
   if (!bundle) return null;
-  const { settings, profile } = bundle;
+  const { settings, profile, unavailableDates, today } = bundle;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -16,12 +17,12 @@ export default function SettingsPage() {
         <p className="text-[0.72rem] font-bold uppercase tracking-[0.16em] text-pen">Your rules</p>
         <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-ink">Settings</h1>
         <p className="mt-1 max-w-lg text-[0.88rem] text-ink-soft">
-          These four numbers drive the entire scheduler. Change them, then regenerate the plan.
+          These rules drive the scheduler. Protected days are skipped automatically when the diary
+          works out collections, hand-backs and daily marking pace.
         </p>
       </header>
 
       <div className="grid items-start gap-6 md:grid-cols-[1fr_1.15fr]">
-        {/* Rule cards */}
         <div className="space-y-3">
           {[
             {
@@ -42,7 +43,7 @@ export default function SettingsPage() {
             {
               icon: CalendarRange,
               title: `${settings.windowDays} school days per pile`,
-              body: "How long books stay with you. It's what turns 26 books into a calm 6-a-day.",
+              body: "How long books stay with you. Protected weekdays do not consume one of these marking days.",
             },
           ].map((r, i) => (
             <div key={r.title} className="card card-hover rise flex gap-3.5 p-4" style={{ animationDelay: `${i * 60}ms` }}>
@@ -57,11 +58,15 @@ export default function SettingsPage() {
           ))}
         </div>
 
-        {/* The form */}
         <div className="card rise p-6" style={{ animationDelay: "120ms" }}>
           <SettingsForm settings={settings} name={profile.name} />
         </div>
       </div>
+
+      <ProtectedDaysManager
+        days={unavailableDates.map(({ id, date, reason }) => ({ id, date, reason }))}
+        today={today}
+      />
 
       <DataManager />
     </div>
