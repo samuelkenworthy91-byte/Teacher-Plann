@@ -1,7 +1,13 @@
 "use client";
 
 import { mutate, getDb, nextId } from "@/lib/store";
-import { todayStr, clampInt } from "@/lib/dates";
+import {
+  addSchoolDays,
+  clampInt,
+  isAvailableSchoolDay,
+  isValidDate,
+  todayStr,
+} from "@/lib/dates";
 import { dailyRateFor } from "@/lib/engine";
 import {
   computeDeferCollect,
@@ -13,10 +19,16 @@ import {
 import type { ActionResult } from "@/actions/classes";
 import type { PlanRow } from "@/lib/types";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 function findPlan(id: number): PlanRow | null {
   return getDb().plans.find((p) => p.id === id) ?? null;
+}
+
+function protectedDates(): string[] {
+  return getDb().unavailableDates.map((d) => d.date);
+}
+
+function protectedSet(): Set<string> {
+  return new Set(protectedDates());
 }
 
 function newPlan(id: number, input: Partial<PlanRow> & { classId: number }): PlanRow {
@@ -47,7 +59,7 @@ function newPlan(id: number, input: Partial<PlanRow> & { classId: number }): Pla
 /* ------------------------------------------------------------------ */
 
 /** Rebuild only flexible future auto plans around locked/manual/active piles. */
-async function restaggerDiary(): Promise<number> {
+export async function restaggerDiary(): Promise<number> {
   const db = getDb();
   if (db.classes.length === 0 || db.slots.length === 0) return 0;
 
@@ -58,6 +70,7 @@ async function restaggerDiary(): Promise<number> {
     plans: db.plans,
     settings: db.settings,
     today,
+    unavailableDates: db.unavailableDates.map((d) => d.date),
   });
 
   mutate((draft) => {
@@ -111,12 +124,14 @@ export async function deferCollectAction(
 
   const today = todayStr();
   const cls = db.classes.find((c) => c.id === plan.classId);
+  const unavailableDates = db.unavailableDates.map((d) => d.date);
   const next = computeDeferCollect({
     plan,
     slots: db.slots,
     settings: db.settings,
     today,
     studentCount: cls?.studentCount ?? plan.totalBooks,
+    unavailableDates,
   });
 
   mutate((draft) => {
@@ -147,7 +162,12 @@ export async function deferHandbackAction(
   if (!plan) return { ok: false, error: "Plan not found." };
   if (plan.status === "returned") return { ok: false, error: "Already handed back." };
 
-  const next = computeDeferHandback({ plan, slots: db.slots, today: todayStr() });
+  const next = computeDeferHandback({
+    plan,
+    slots: db.slots,
+    today: todayStr(),
+    unavailableDates: db.unavailableDates.map((d) => d.date),
+  });
   mutate((draft) => {
     draft.plans = draft.plans.map((p) =>
       p.id === id
@@ -184,18 +204,32 @@ export async function createAdhocAction(
   if (!cls) return { ok: false, error: "Pick a class." };
 
   const today = todayStr();
+  const blocked = new Set(db.unavailableDates.map((d) => d.date));
+  if (!isAvailableSchoolDay(today, blocked)) {
+    return { ok: false, error: "Today is protected from work and marking." };
+  }
+
   const total = totalOverride > 0 ? totalOverride : cls.studentCount;
   const suggested = suggestAdhocHandback({
     classId,
     slots: db.slots,
     settings: db.settings,
     today,
+    unavailableDates: db.unavailableDates.map((d) => d.date),
   });
   const handbackDate =
-    DATE_RE.test(requestedHandback) && requestedHandback >= today
+    isValidDate(requestedHandback) && requestedHandback >= today
       ? requestedHandback
       : suggested.date;
-  const todayLesson = lessonToday(classId, db.slots, today);
+  if (blocked.has(handbackDate)) {
+    return { ok: false, error: "That hand-back date is protected. Pick a working day instead." };
+  }
+  const todayLesson = lessonToday(
+    classId,
+    db.slots,
+    today,
+    db.unavailableDates.map((d) => d.date),
+  );
 
   mutate((draft) => {
     const id = nextId(draft);
@@ -210,7 +244,7 @@ export async function createAdhocAction(
         handbackDate,
         handbackPeriod: suggested.period ?? todayLesson?.period ?? null,
         totalBooks: total,
-        dailyRate: dailyRateFor(total, today, handbackDate),
+        dailyRate: dailyRateFor(total, today, handbackDate, blocked),
         locked: true,
       }),
     );
@@ -233,11 +267,16 @@ export async function createTaskAction(formData: FormData): Promise<ActionResult
 
   const cls = db.classes.find((c) => c.id === classId);
   if (!cls) return { ok: false, error: "Pick a class." };
-  if (!DATE_RE.test(deadline)) return { ok: false, error: "Pick a deadline date." };
+  if (!isValidDate(deadline)) return { ok: false, error: "Pick a valid hand-back date." };
 
   const today = todayStr();
+  const blocked = new Set(db.unavailableDates.map((d) => d.date));
+  const collect = addSchoolDays(today, 0, blocked);
   const total = totalOverride > 0 ? totalOverride : cls.studentCount;
-  const handback = deadline < today ? today : deadline;
+  const handback = deadline < collect ? collect : deadline;
+  if (blocked.has(handback)) {
+    return { ok: false, error: "That hand-back date is protected. Pick a working day instead." };
+  }
 
   let id = 0;
   mutate((draft) => {
@@ -248,10 +287,10 @@ export async function createTaskAction(formData: FormData): Promise<ActionResult
         title,
         planType: "manual",
         status: "marking",
-        collectDate: today,
+        collectDate: collect,
         handbackDate: handback,
         totalBooks: total,
-        dailyRate: dailyRateFor(total, today, handback),
+        dailyRate: dailyRateFor(total, collect, handback, blocked),
         locked: true,
       }),
     );
@@ -276,14 +315,24 @@ export async function collectPlanAction(id: number): Promise<ActionResult> {
   if (plan.status !== "scheduled") return { ok: false, error: "Already collected." };
 
   const today = todayStr();
-  const handback = plan.handbackDate < today ? today : plan.handbackDate;
+  const blocked = protectedSet();
+  if (!isAvailableSchoolDay(today, blocked)) {
+    return {
+      ok: false,
+      error: "Today is protected from work and marking. Choose the next working day.",
+    };
+  }
+  const requestedHandback = plan.handbackDate < today ? today : plan.handbackDate;
+  const handback = addSchoolDays(requestedHandback, 0, blocked);
   patchPlan(id, {
     status: "marking",
     collectDate: today,
     handbackDate: handback,
-    dailyRate: dailyRateFor(plan.totalBooks, today, handback),
+    handbackPeriod: handback === plan.handbackDate ? plan.handbackPeriod : null,
+    dailyRate: dailyRateFor(plan.totalBooks, today, handback, blocked),
     locked: true,
   });
+  await restaggerDiary();
   return { ok: true };
 }
 
@@ -291,12 +340,18 @@ export async function logBooksAction(id: number, delta: number): Promise<ActionR
   const plan = findPlan(id);
   if (!plan) return { ok: false, error: "Plan not found." };
   if (plan.status !== "marking") return { ok: false, error: "Collect the books first." };
+  if (!Number.isFinite(delta)) return { ok: false, error: "Enter a whole number of books." };
+
+  const today = todayStr();
+  const blocked = protectedSet();
+  if (!isAvailableSchoolDay(today, blocked)) {
+    return { ok: false, error: "Today is protected from marking." };
+  }
 
   const next = Math.max(0, Math.min(plan.totalBooks, plan.markedCount + Math.round(delta)));
   const actualDelta = next - plan.markedCount;
   if (actualDelta === 0) return { ok: true };
 
-  const today = todayStr();
   mutate((draft) => {
     draft.entries.unshift({
       id: nextId(draft),
@@ -310,15 +365,60 @@ export async function logBooksAction(id: number, delta: number): Promise<ActionR
   return { ok: true };
 }
 
+/** Remove the whole most-recent marking input, including a mistaken bulk entry. */
+export async function undoLastMarkingAction(
+  id: number,
+): Promise<ActionResult & { undoneCount?: number }> {
+  const plan = findPlan(id);
+  if (!plan) return { ok: false, error: "Plan not found." };
+  if (plan.status !== "marking") {
+    return { ok: false, error: "This pile is not open for marking." };
+  }
+
+  const entries = getDb().entries
+    .filter((entry) => entry.planId === id)
+    .sort(
+      (a, b) =>
+        b.createdAt.localeCompare(a.createdAt) || b.id - a.id,
+    );
+  const lastEntry = entries[0];
+  if (!lastEntry) return { ok: false, error: "There is no marking input to undo." };
+
+  const correctedCount = Math.max(
+    0,
+    Math.min(plan.totalBooks, plan.markedCount - lastEntry.count),
+  );
+  mutate((draft) => {
+    draft.entries = draft.entries.filter((entry) => entry.id !== lastEntry.id);
+    draft.plans = draft.plans.map((p) =>
+      p.id === id ? { ...p, markedCount: correctedCount } : p,
+    );
+  });
+  return { ok: true, undoneCount: lastEntry.count };
+}
+
 export async function returnPlanAction(id: number): Promise<ActionResult> {
-  if (!findPlan(id)) return { ok: false, error: "Plan not found." };
-  patchPlan(id, { status: "returned", returnedAt: todayStr(), locked: true });
+  const plan = findPlan(id);
+  if (!plan) return { ok: false, error: "Plan not found." };
+  const today = todayStr();
+  const blocked = protectedSet();
+  if (!isAvailableSchoolDay(today, blocked)) {
+    return { ok: false, error: "Today is protected. Hand the books back on a working day." };
+  }
+  patchPlan(id, {
+    status: "returned",
+    handbackDate: today,
+    returnedAt: today,
+    locked: true,
+  });
+  await restaggerDiary();
   return { ok: true };
 }
 
 export async function reopenPlanAction(id: number): Promise<ActionResult> {
   if (!findPlan(id)) return { ok: false, error: "Plan not found." };
   patchPlan(id, { status: "marking", returnedAt: null });
+  await restaggerDiary();
   return { ok: true };
 }
 
@@ -335,6 +435,7 @@ export async function toggleLockAction(id: number): Promise<ActionResult> {
   const plan = findPlan(id);
   if (!plan) return { ok: false, error: "Plan not found." };
   patchPlan(id, { locked: !plan.locked });
+  await restaggerDiary();
   return { ok: true };
 }
 
@@ -348,20 +449,29 @@ export async function updatePlanAction(formData: FormData): Promise<ActionResult
   const handbackDate = String(formData.get("handbackDate") ?? plan.handbackDate);
   const totalBooks = clampInt(formData.get("totalBooks"), 1, 400, plan.totalBooks);
 
-  if (!DATE_RE.test(collectDate) || !DATE_RE.test(handbackDate)) {
-    return { ok: false, error: "Dates need to be real dates." };
+  if (!isValidDate(collectDate) || !isValidDate(handbackDate)) {
+    return { ok: false, error: "Dates need to be valid calendar dates." };
   }
   if (handbackDate < collectDate) {
     return { ok: false, error: "Hand-back must be after collection." };
+  }
+  const blocked = protectedSet();
+  if (!isAvailableSchoolDay(collectDate, blocked)) {
+    return { ok: false, error: "That collection date is protected. Pick a working day instead." };
+  }
+  if (!isAvailableSchoolDay(handbackDate, blocked)) {
+    return { ok: false, error: "That hand-back date is protected. Pick a working day instead." };
   }
 
   patchPlan(id, {
     title,
     collectDate,
     handbackDate,
+    collectPeriod: collectDate === plan.collectDate ? plan.collectPeriod : null,
+    handbackPeriod: handbackDate === plan.handbackDate ? plan.handbackPeriod : null,
     totalBooks,
     markedCount: Math.min(plan.markedCount, totalBooks),
-    dailyRate: dailyRateFor(totalBooks, collectDate, handbackDate),
+    dailyRate: dailyRateFor(totalBooks, collectDate, handbackDate, blocked),
     locked: true,
   });
   await restaggerDiary();
