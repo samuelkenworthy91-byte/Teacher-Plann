@@ -9,6 +9,8 @@ import {
   pretty,
   schoolDaysInclusive,
   startOfWeek,
+  isAvailableSchoolDay,
+  NO_UNAVAILABLE_DATES,
   toDay,
   weekday,
 } from "@/lib/dates";
@@ -36,6 +38,7 @@ export function lessonsFor(
   slots: SlotRow[],
   from: string,
   to: string,
+  unavailableDates: ReadonlySet<string> = NO_UNAVAILABLE_DATES,
 ): Occurrence[] {
   const mine = slots.filter((s) => s.classId === classId);
   if (mine.length === 0) return [];
@@ -43,7 +46,7 @@ export function lessonsFor(
   for (let d = toDay(from); d <= toDay(to); d++) {
     const date = new Date(d * 86_400_000).toISOString().slice(0, 10);
     const w = weekday(date);
-    if (w < 1 || w > 5) continue;
+    if (w < 1 || w > 5 || !isAvailableSchoolDay(date, unavailableDates)) continue;
     for (const s of mine) {
       if (s.dayOfWeek === w) out.push({ date, period: s.period });
     }
@@ -57,8 +60,15 @@ export function firstLessonOnOrAfter(
   slots: SlotRow[],
   date: string,
   withinDays = 40,
+  unavailableDates: ReadonlySet<string> = NO_UNAVAILABLE_DATES,
 ): Occurrence | null {
-  const list = lessonsFor(classId, slots, date, addDays(date, withinDays));
+  const list = lessonsFor(
+    classId,
+    slots,
+    date,
+    addDays(date, withinDays),
+    unavailableDates,
+  );
   return list[0] ?? null;
 }
 
@@ -67,16 +77,29 @@ export function firstLessonOnOrAfter(
 /* ------------------------------------------------------------------ */
 
 /** Minimum books/day to finish `total` between collect and handback (inclusive school days). */
-export function dailyRateFor(total: number, from: string, to: string): number {
-  const days = schoolDaysInclusive(from, to);
+export function dailyRateFor(
+  total: number,
+  from: string,
+  to: string,
+  unavailableDates: ReadonlySet<string> = NO_UNAVAILABLE_DATES,
+): number {
+  const days = schoolDaysInclusive(from, to, unavailableDates);
   return Math.max(1, Math.ceil(total / days));
 }
 
 /** What must be marked today for an in-progress plan to stay on pace. */
-export function requiredToday(plan: PlanRow, today: string): number {
+export function requiredToday(
+  plan: PlanRow,
+  today: string,
+  unavailableDates: ReadonlySet<string> = NO_UNAVAILABLE_DATES,
+): number {
   const remaining = Math.max(0, plan.totalBooks - plan.markedCount);
-  if (remaining === 0) return 0;
-  const daysLeft = schoolDaysInclusive(maxDate(today, plan.collectDate), plan.handbackDate);
+  if (remaining === 0 || !isAvailableSchoolDay(today, unavailableDates)) return 0;
+  const daysLeft = schoolDaysInclusive(
+    maxDate(today, plan.collectDate),
+    plan.handbackDate,
+    unavailableDates,
+  );
   return Math.max(1, Math.ceil(remaining / daysLeft));
 }
 
@@ -93,11 +116,22 @@ export function computeHandback(
   slots: SlotRow[],
   collect: Occurrence,
   windowDays: number,
+  unavailableDates: ReadonlySet<string> = NO_UNAVAILABLE_DATES,
 ): Occurrence {
-  const windowEnd = addSchoolDays(collect.date, Math.max(0, windowDays - 1));
+  const windowEnd = addSchoolDays(
+    collect.date,
+    Math.max(0, windowDays - 1),
+    unavailableDates,
+  );
   const lesson =
-    firstLessonOnOrAfter(classId, slots, windowEnd, 35) ??
-    firstLessonOnOrAfter(classId, slots, addDays(collect.date, 1), 35);
+    firstLessonOnOrAfter(classId, slots, windowEnd, 35, unavailableDates) ??
+    firstLessonOnOrAfter(
+      classId,
+      slots,
+      addDays(collect.date, 1),
+      35,
+      unavailableDates,
+    );
   return lesson ?? { date: windowEnd, period: collect.period };
 }
 
@@ -137,19 +171,23 @@ export function lastFeedbackDate(
 export function generateSchedule(args: {
   classes: ClassRow[];
   slots: SlotRow[];
-  plans: PlanRow[]; // all plans (busy intervals come from locked/manual/active ones)
+  plans: PlanRow[];
   settings: SettingsRow;
   today: string;
+  unavailableDates?: string[];
 }): Suggestion[] {
   const { classes, slots, plans, settings, today } = args;
+  const unavailableDates = new Set(args.unavailableDates ?? []);
   const classesById = new Map(classes.map((c) => [c.id, c]));
 
-  // Intervals already spoken for: locked or manual plans + anything in flight.
   const busy: Interval[] = plans
-    .filter((p) => p.status === "marking" || (p.status === "scheduled" && (p.locked || p.planType === "manual")))
+    .filter(
+      (p) =>
+        p.status === "marking" ||
+        (p.status === "scheduled" && (p.locked || p.planType === "manual")),
+    )
     .map((p) => ({ start: p.collectDate, end: p.handbackDate }));
 
-  // Classes that already have an auto plan in the diary don't need a new one.
   const alreadyPlanned = new Set(
     plans
       .filter(
@@ -171,16 +209,22 @@ export function generateSchedule(args: {
     .filter((c) => !alreadyPlanned.has(c.id))
     .map((cls) => {
       const last = lastFeedbackDate(cls.id, plans, classesById);
-      const future = lessonsFor(cls.id, slots, addDays(last, 1), addDays(last, 120));
+      const future = lessonsFor(
+        cls.id,
+        slots,
+        addDays(last, 1),
+        addDays(last, 120),
+        unavailableDates,
+      );
       const earliest =
-        future[settings.minLessons - 1]?.date ?? addDays(last, Math.max(2, settings.minLessons));
+        future[settings.minLessons - 1]?.date ??
+        addDays(last, Math.max(2, settings.minLessons));
       const latestByLessons =
         future[settings.maxLessons - 1]?.date ?? addDays(last, settings.maxGapDays);
       const latest = minDate(addDays(last, settings.maxGapDays), latestByLessons);
       return { cls, earliest, latest, hasSlots: future.length > 0 };
     })
     .filter((j) => j.hasSlots)
-    // Most desperate first → the tightest class wins the best slots.
     .sort((a, b) => cmp(a.latest, b.latest) || a.cls.name.localeCompare(b.cls.name));
 
   const out: Suggestion[] = [];
@@ -189,18 +233,28 @@ export function generateSchedule(args: {
     const { cls } = job;
     const startFrom = maxDate(job.earliest, today);
 
-    // Candidate collect lessons inside the legal window; if the window has
-    // already passed we still offer the soonest possible lesson.
-    let candidates = lessonsFor(cls.id, slots, startFrom, maxDate(job.latest, startFrom));
+    let candidates = lessonsFor(
+      cls.id,
+      slots,
+      startFrom,
+      maxDate(job.latest, startFrom),
+      unavailableDates,
+    );
     if (candidates.length === 0) {
-      const next = firstLessonOnOrAfter(cls.id, slots, today, 45);
+      const next = firstLessonOnOrAfter(cls.id, slots, today, 45, unavailableDates);
       candidates = next ? [next] : [];
     }
 
     let chosen: { c: Occurrence; hb: Occurrence; late: boolean } | null = null;
 
     for (const c of candidates) {
-      const hb = computeHandback(cls.id, slots, c, settings.windowDays);
+      const hb = computeHandback(
+        cls.id,
+        slots,
+        c,
+        settings.windowDays,
+        unavailableDates,
+      );
       const iv = { start: c.date, end: hb.date };
       if (!busy.some((b) => overlaps(iv, b))) {
         chosen = { c, hb, late: cmp(c.date, job.latest) > 0 };
@@ -209,10 +263,21 @@ export function generateSchedule(args: {
     }
 
     if (!chosen) {
-      // Everything legal clashes → queue behind the current workload.
-      const scan = lessonsFor(cls.id, slots, today, addDays(today, 150));
+      const scan = lessonsFor(
+        cls.id,
+        slots,
+        today,
+        addDays(today, 150),
+        unavailableDates,
+      );
       for (const c of scan) {
-        const hb = computeHandback(cls.id, slots, c, settings.windowDays);
+        const hb = computeHandback(
+          cls.id,
+          slots,
+          c,
+          settings.windowDays,
+          unavailableDates,
+        );
         const iv = { start: c.date, end: hb.date };
         if (!busy.some((b) => overlaps(iv, b))) {
           chosen = { c, hb, late: cmp(c.date, job.latest) > 0 };
@@ -230,7 +295,12 @@ export function generateSchedule(args: {
       collectPeriod: chosen.c.period,
       handbackDate: chosen.hb.date,
       handbackPeriod: chosen.hb.period,
-      dailyRate: dailyRateFor(cls.studentCount, chosen.c.date, chosen.hb.date),
+      dailyRate: dailyRateFor(
+        cls.studentCount,
+        chosen.c.date,
+        chosen.hb.date,
+        unavailableDates,
+      ),
       late: chosen.late,
       dueBy: job.latest,
     });
@@ -258,10 +328,17 @@ export function computeClassHealth(
   plans: PlanRow[],
   settings: SettingsRow,
   today: string,
+  unavailableDates: ReadonlySet<string> = NO_UNAVAILABLE_DATES,
 ): ClassHealth {
   const byId = new Map([[cls.id, cls]]);
   const last = lastFeedbackDate(cls.id, plans, byId);
-  const lessons = lessonsFor(cls.id, slots, addDays(last, 1), today).length;
+  const lessons = lessonsFor(
+    cls.id,
+    slots,
+    addDays(last, 1),
+    today,
+    unavailableDates,
+  ).length;
   const days = diffDays(last, today);
   const nextPlanned =
     plans
@@ -269,8 +346,11 @@ export function computeClassHealth(
       .sort((a, b) => cmp(a.collectDate, b.collectDate))[0] ?? null;
 
   let status: ClassHealth["status"] = "fresh";
-  if (nextPlanned && (nextPlanned.status === "marking" || cmp(nextPlanned.collectDate, today) <= 3)) {
-    status = "fresh"; // handled — a cycle is booked in
+  if (
+    nextPlanned &&
+    (nextPlanned.status === "marking" || cmp(nextPlanned.collectDate, today) <= 3)
+  ) {
+    status = "fresh";
   } else if (days >= settings.maxGapDays || lessons >= settings.maxLessons) status = "overdue";
   else if (days >= settings.maxGapDays - 4 || lessons >= settings.minLessons) status = "due";
   else if (lessons >= Math.max(1, settings.minLessons - 1)) status = "ok";
@@ -295,8 +375,10 @@ export function buildNotices(args: {
   plans: PlanRow[];
   entries: { planId: number; date: string; count: number }[];
   settings: SettingsRow;
+  unavailableDates?: string[];
 }): Notice[] {
   const { today, classes, plans, entries } = args;
+  const unavailableDates = new Set(args.unavailableDates ?? []);
   const byId = new Map(classes.map((c) => [c.id, c]));
   const notices: Notice[] = [];
 
@@ -307,7 +389,11 @@ export function buildNotices(args: {
     const cls = byId.get(p.classId);
     if (!cls) continue;
 
-    if (p.status === "scheduled" && cmp(p.collectDate, today) <= 0) {
+    if (
+      p.status === "scheduled" &&
+      cmp(p.collectDate, today) <= 0 &&
+      isAvailableSchoolDay(today, unavailableDates)
+    ) {
       notices.push({
         id: `collect-${p.id}`,
         tone: "pen",
@@ -316,6 +402,7 @@ export function buildNotices(args: {
           p.totalBooks,
           today,
           p.handbackDate,
+          unavailableDates,
         )}/day to hand back on ${pretty(p.handbackDate)}.`,
       });
     }
@@ -333,8 +420,9 @@ export function buildNotices(args: {
         });
         continue;
       }
+      if (remaining > 0 && !isAvailableSchoolDay(today, unavailableDates)) continue;
       if (remaining > 0) {
-        const need = requiredToday(p, today);
+        const need = requiredToday(p, today, unavailableDates);
         const doneToday = entries
           .filter((e) => e.planId === p.id && e.date === today)
           .reduce((s, e) => s + e.count, 0);
@@ -342,8 +430,12 @@ export function buildNotices(args: {
           notices.push({
             id: `mark-${p.id}`,
             tone: doneToday === 0 ? "warn" : "ink",
-            title: `Mark at least ${need - doneToday} more ${cls.name} book${need - doneToday === 1 ? "" : "s"} today`,
-            body: `${p.markedCount}/${p.totalBooks} done · hand back ${pretty(p.handbackDate)}. Stay ahead and the next class is already queued after this one.`,
+            title: `Mark at least ${need - doneToday} more ${cls.name} book${
+              need - doneToday === 1 ? "" : "s"
+            } today`,
+            body: `${p.markedCount}/${p.totalBooks} done · hand back ${pretty(
+              p.handbackDate,
+            )}. Stay ahead and the next class is already queued after this one.`,
           });
         } else {
           notices.push({
@@ -376,9 +468,12 @@ export function weeklyLoad(plans: PlanRow[], today: string, weeks = 6) {
   const monday = startOfWeek(today);
   return Array.from({ length: weeks }, (_, i) => {
     const start = addDays(monday, i * 7);
-    const end = addDays(start, 4); // fri
+    const end = addDays(start, 4);
     const activePlans = plans.filter(
-      (p) => p.status !== "returned" && cmp(p.collectDate, end) <= 0 && cmp(p.handbackDate, start) >= 0,
+      (p) =>
+        p.status !== "returned" &&
+        cmp(p.collectDate, end) <= 0 &&
+        cmp(p.handbackDate, start) >= 0,
     );
     const load = activePlans.reduce((s, p) => s + p.dailyRate, 0);
     return { start, label: pretty(start), load, plans: activePlans.length };
